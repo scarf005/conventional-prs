@@ -212,58 +212,12 @@ impl ErrorReporter {
 
     /// Group related errors that should be displayed together
     fn group_errors(&self, errors: &[ParseError]) -> Vec<Vec<ParseError>> {
-        let mut groups: Vec<Vec<ParseError>> = Vec::new();
-        let mut used = vec![false; errors.len()];
-
-        for i in 0..errors.len() {
-            if used[i] {
-                continue;
-            }
-
-            let mut group = vec![errors[i].clone()];
-            used[i] = true;
-
-            // Check if this error should be grouped with nearby errors
-            for j in (i + 1)..errors.len() {
-                if used[j] {
-                    continue;
-                }
-
-                if self.should_group(&errors[i], &errors[j]) {
-                    group.push(errors[j].clone());
-                    used[j] = true;
-                }
-            }
-
-            groups.push(group);
+        // Group all errors into a single report for less verbosity
+        if errors.is_empty() {
+            vec![]
+        } else {
+            vec![errors.to_vec()]
         }
-
-        groups
-    }
-
-    /// Determine if two errors should be grouped together
-    fn should_group(&self, err1: &ParseError, err2: &ParseError) -> bool {
-        // Group spacing-related errors that are adjacent or overlapping
-        let is_spacing_error = |err: &ParseError| {
-            matches!(
-                err.kind,
-                ParseErrorKind::ExtraSpaceBeforeColon
-                    | ParseErrorKind::MissingSpace
-                    | ParseErrorKind::ExtraSpaceAfterColon
-                    | ParseErrorKind::MissingColon
-            )
-        };
-
-        if !is_spacing_error(err1) || !is_spacing_error(err2) {
-            return false;
-        }
-
-        // Check if spans are adjacent or overlapping
-        let span1_end = err1.span.end;
-        let span2_start = err2.span.start;
-
-        // Allow grouping if errors are within 2 positions of each other
-        span1_end >= span2_start || (span2_start.saturating_sub(span1_end) <= 2)
     }
 
     /// Build a combined report for multiple related errors
@@ -277,13 +231,11 @@ impl ErrorReporter {
         let main_span = errors[0].span.clone();
 
         // Determine the overall message based on error types
-        let message = if errors.iter().all(|e| matches!(
-            e.kind,
-            ParseErrorKind::ExtraSpaceBeforeColon | ParseErrorKind::MissingSpace
-        )) {
-            "Spacing errors around colon"
+        let message = if errors.len() == 1 {
+            let (msg, _, _) = self.get_error_details(&errors[0].kind);
+            msg
         } else {
-            "Multiple formatting errors"
+            "Invalid commit message format".to_string()
         };
 
         let mut report_builder = Report::build(ReportKind::Error, ("input", main_span))
