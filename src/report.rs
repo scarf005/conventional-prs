@@ -52,7 +52,83 @@ impl ErrorReporter {
                 .unwrap_or_else(|e| eprintln!("Failed to write report: {}", e));
         }
 
-        String::from_utf8(output).unwrap_or_else(|_| "Error generating report".to_string())
+        let rendered = String::from_utf8(output).unwrap_or_else(|_| "Error generating report".to_string());
+
+        // Post-process to use custom characters for ranges vs points
+        self.customize_underlines(rendered, errors)
+    }
+
+    /// Customize underline characters to distinguish ranges from single points
+    fn customize_underlines(&self, output: String, errors: &[ParseError]) -> String {
+        let lines: Vec<&str> = output.lines().collect();
+        let mut result_lines = Vec::new();
+
+        for line in &lines {
+            // Check if this line contains underline characters
+            if line.contains('┬') || line.contains('─') {
+                let customized = self.customize_underline_chars(line);
+                result_lines.push(customized);
+            } else {
+                result_lines.push(line.to_string());
+            }
+        }
+
+        result_lines.join("\n") + "\n"
+    }
+
+    /// Customize underline characters: ranges get ╰─╯ boundaries, points get ╿
+    fn customize_underline_chars(&self, line: &str) -> String {
+        let chars: Vec<char> = line.chars().collect();
+        let mut result = chars.clone();
+
+        // Process each ┬ to determine if it's part of a range or a standalone point
+        for i in 0..chars.len() {
+            if chars[i] == '┬' {
+                // Check if this connector has dashes immediately around it
+                let has_dash_before = i > 0 && chars[i - 1] == '─';
+                let has_dash_after = i + 1 < chars.len() && chars[i + 1] == '─';
+
+                // Standalone point: missing dash on at least one side
+                if !has_dash_before || !has_dash_after {
+                    result[i] = '╿';
+                }
+            }
+        }
+
+        // Now find range boundaries (first and last dash in each continuous dash-connector sequence)
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] == '─' {
+                // Start of a potential range
+                let start = i;
+                let mut end = i;
+
+                // Extend through dashes and connectors
+                while end + 1 < chars.len() && (chars[end + 1] == '─' || chars[end + 1] == '┬') {
+                    end += 1;
+                }
+
+                // Only process as range if we moved past the start AND have at least one connector
+                if end > start {
+                    let has_connector = (start..=end).any(|idx| chars[idx] == '┬');
+                    if has_connector {
+                        // Find the last dash in this sequence
+                        if let Some(last_dash) = (start..=end).rev().find(|&idx| chars[idx] == '─') {
+                            result[start] = '╰';
+                            if last_dash != start {
+                                result[last_dash] = '╯';
+                            }
+                        }
+                    }
+                }
+
+                i = end + 1;
+            } else {
+                i += 1;
+            }
+        }
+
+        result.iter().collect()
     }
 
     /// Replace spaces in error spans with visible character
