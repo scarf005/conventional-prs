@@ -30,21 +30,28 @@ impl ErrorReporter {
     /// Generate error report and return it as a String
     pub fn report_errors(&self, input: &str, errors: &[ParseError]) -> String {
         let mut output = Vec::new();
-        
+
         // Replace problematic spaces with visible character based on error spans
         let display_input = self.visualize_spacing_errors(input, errors);
-        
+
         let source = Source::from(&display_input);
-        
-        for error in errors {
-            let report = self.build_report(error);
-            
+
+        // Group related errors together
+        let error_groups = self.group_errors(errors);
+
+        for group in error_groups {
+            let report = if group.len() == 1 {
+                self.build_report(&group[0])
+            } else {
+                self.build_combined_report(&group)
+            };
+
             // Write to buffer
             report
                 .write(("input", source.clone()), &mut output)
                 .unwrap_or_else(|e| eprintln!("Failed to write report: {}", e));
         }
-        
+
         String::from_utf8(output).unwrap_or_else(|_| "Error generating report".to_string())
     }
 
@@ -201,6 +208,219 @@ impl ErrorReporter {
         }
 
         report_builder.finish()
+    }
+
+    /// Group related errors that should be displayed together
+    fn group_errors(&self, errors: &[ParseError]) -> Vec<Vec<ParseError>> {
+        let mut groups: Vec<Vec<ParseError>> = Vec::new();
+        let mut used = vec![false; errors.len()];
+
+        for i in 0..errors.len() {
+            if used[i] {
+                continue;
+            }
+
+            let mut group = vec![errors[i].clone()];
+            used[i] = true;
+
+            // Check if this error should be grouped with nearby errors
+            for j in (i + 1)..errors.len() {
+                if used[j] {
+                    continue;
+                }
+
+                if self.should_group(&errors[i], &errors[j]) {
+                    group.push(errors[j].clone());
+                    used[j] = true;
+                }
+            }
+
+            groups.push(group);
+        }
+
+        groups
+    }
+
+    /// Determine if two errors should be grouped together
+    fn should_group(&self, err1: &ParseError, err2: &ParseError) -> bool {
+        // Group spacing-related errors that are adjacent or overlapping
+        let is_spacing_error = |err: &ParseError| {
+            matches!(
+                err.kind,
+                ParseErrorKind::ExtraSpaceBeforeColon
+                    | ParseErrorKind::MissingSpace
+                    | ParseErrorKind::ExtraSpaceAfterColon
+                    | ParseErrorKind::MissingColon
+            )
+        };
+
+        if !is_spacing_error(err1) || !is_spacing_error(err2) {
+            return false;
+        }
+
+        // Check if spans are adjacent or overlapping
+        let span1_end = err1.span.end;
+        let span2_start = err2.span.start;
+
+        // Allow grouping if errors are within 2 positions of each other
+        span1_end >= span2_start || (span2_start.saturating_sub(span1_end) <= 2)
+    }
+
+    /// Build a combined report for multiple related errors
+    fn build_combined_report(
+        &self,
+        errors: &[ParseError],
+    ) -> Report<'static, (&'static str, std::ops::Range<usize>)> {
+        let mut colors = ColorGenerator::new();
+
+        // Use the first error's span as the main report span
+        let main_span = errors[0].span.clone();
+
+        // Determine the overall message based on error types
+        let message = if errors.iter().all(|e| matches!(
+            e.kind,
+            ParseErrorKind::ExtraSpaceBeforeColon | ParseErrorKind::MissingSpace
+        )) {
+            "Spacing errors around colon"
+        } else {
+            "Multiple formatting errors"
+        };
+
+        let mut report_builder = Report::build(ReportKind::Error, ("input", main_span))
+            .with_message(message);
+
+        // Add a label for each error
+        for (idx, error) in errors.iter().enumerate() {
+            let error_color = if self.format == OutputFormat::Ascii {
+                None
+            } else {
+                Some(colors.next())
+            };
+
+            let (_msg, label_text, help_text) = self.get_error_details(&error.kind);
+            let label_with_num = format!("{label_text} (#{num})", num = idx + 1);
+
+            let mut label =
+                Label::new(("input", error.span.clone())).with_message(label_with_num);
+
+            if let Some(color) = error_color {
+                label = label.with_color(color);
+            }
+
+            report_builder = report_builder.with_label(label);
+
+            // Add help text (ariadne will number them automatically)
+            if let Some(help) = help_text {
+                report_builder = report_builder.with_help(help);
+            }
+        }
+
+        // Apply color configuration based on format
+        if self.format == OutputFormat::Ascii {
+            report_builder =
+                report_builder.with_config(ariadne::Config::default().with_color(false));
+        }
+
+        report_builder.finish()
+    }
+
+    /// Extract error details (message, label, help) for a given error kind
+    fn get_error_details(&self, kind: &ParseErrorKind) -> (String, String, Option<String>) {
+        match kind {
+            ParseErrorKind::InvalidType { found, expected } => {
+                let msg = format!("Invalid commit type '{found}'");
+                let label = format!("'{found}' is not a valid type");
+
+                // Find similar type for suggestion
+                let suggestion = find_similar(found, expected);
+                let valid_types = expected.join(", ");
+
+                let help = if let Some(suggestion) = suggestion {
+                    format!("Did you mean '{suggestion}'?\nValid types: {valid_types}")
+                } else {
+                    format!("Valid types: {valid_types}")
+                };
+                (msg, label, Some(help))
+            }
+            ParseErrorKind::InvalidScope { found, expected } => {
+                let msg = format!("Invalid scope '{found}'");
+                let label = format!("'{found}' is not a valid scope");
+
+                // Find similar scope for suggestion
+                let suggestion = find_similar(found, expected);
+                let valid_scopes = expected.join(", ");
+
+                let help = if let Some(suggestion) = suggestion {
+                    format!("Did you mean '{suggestion}'?\nValid scopes: {valid_scopes}")
+                } else {
+                    format!("Valid scopes: {valid_scopes}")
+                };
+                (msg, label, Some(help))
+            }
+            ParseErrorKind::MissingClosingParen => (
+                "Missing closing parenthesis".to_string(),
+                "expected ')' here".to_string(),
+                Some("Add a closing ')' after the scope".to_string()),
+            ),
+            ParseErrorKind::MissingSeparator => (
+                "Missing separator".to_string(),
+                "expected ': ' here".to_string(),
+                Some("Add a colon followed by a space ': '".to_string()),
+            ),
+            ParseErrorKind::MissingDescription => (
+                "Missing description".to_string(),
+                "description is required".to_string(),
+                Some("Add a description after the colon".to_string()),
+            ),
+            ParseErrorKind::EmptyType => (
+                "Empty type".to_string(),
+                "type cannot be empty".to_string(),
+                Some("Add a commit type (e.g., 'feat', 'fix')".to_string()),
+            ),
+            ParseErrorKind::EmptyScope => (
+                "Empty scope".to_string(),
+                "scope cannot be empty".to_string(),
+                Some("Either remove the parentheses or add a scope inside them".to_string()),
+            ),
+            ParseErrorKind::UnexpectedChar(c) => (
+                format!("Unexpected character '{c}'"),
+                "unexpected character".to_string(),
+                None,
+            ),
+            ParseErrorKind::GenericParseError(msg) => (
+                msg.clone(),
+                "parse error".to_string(),
+                Some(
+                    "Ensure your commit message follows the format: type(scope): description"
+                        .to_string(),
+                ),
+            ),
+            ParseErrorKind::ExtraSpaceBeforeColon => (
+                "Extra space found between type and colon".to_string(),
+                "extra space found here".to_string(),
+                Some("Remove spaces between the type/scope and the colon".to_string()),
+            ),
+            ParseErrorKind::ExtraSpaceAfterColon => (
+                "Extra spaces after colon".to_string(),
+                "too many spaces".to_string(),
+                Some("Use exactly one space after the colon".to_string()),
+            ),
+            ParseErrorKind::MissingColon => (
+                "Missing colon separator".to_string(),
+                "expected ':' here".to_string(),
+                Some("Add a colon ':' after the type/scope, followed by a space".to_string()),
+            ),
+            ParseErrorKind::MissingSpace => (
+                "Missing space after colon".to_string(),
+                "expected space here".to_string(),
+                Some("Add a space after the colon, before the description".to_string()),
+            ),
+            ParseErrorKind::TrailingSpaces => (
+                "Trailing spaces at end of commit message".to_string(),
+                "trailing whitespace".to_string(),
+                Some("Remove trailing spaces from the end of the commit message".to_string()),
+            ),
+        }
     }
 
     /// Print errors to stderr (for terminal) or stdout (for GitHub)
