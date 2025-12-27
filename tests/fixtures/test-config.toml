@@ -1,0 +1,6 @@
+enabled = true
+titleAndCommits = true
+types = ["feat", "fix", "chore"]
+scopes = ["core", "api"]
+allowRevertCommits = true
+targetUrl = "https://example.com/toml"

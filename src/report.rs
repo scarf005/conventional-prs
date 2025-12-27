@@ -1,0 +1,273 @@
+use crate::parser::{ParseError, ParseErrorKind};
+use ariadne::{ColorGenerator, Label, Report, ReportKind, Source};
+use strsim::jaro_winkler;
+
+/// Find the most similar string from a list using Jaro-Winkler similarity
+fn find_similar(target: &str, candidates: &[String]) -> Option<String> {
+    candidates
+        .iter()
+        .map(|candidate| (candidate, jaro_winkler(target, candidate)))
+        .filter(|(_, similarity)| *similarity > 0.8) // High similarity threshold
+        .max_by(|(_, sim1), (_, sim2)| sim1.partial_cmp(sim2).unwrap())
+        .map(|(candidate, _)| candidate.clone())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OutputFormat {
+    Color, // Colored for terminal
+    Ascii, // Plain ASCII for GitHub Actions
+}
+
+pub struct ErrorReporter {
+    format: OutputFormat,
+}
+
+impl ErrorReporter {
+    pub fn new(format: OutputFormat) -> Self {
+        Self { format }
+    }
+
+    /// Generate error report and return it as a String
+    pub fn report_errors(&self, input: &str, errors: &[ParseError]) -> String {
+        let mut output = Vec::new();
+        
+        // Replace problematic spaces with visible character based on error spans
+        let display_input = self.visualize_spacing_errors(input, errors);
+        
+        let source = Source::from(&display_input);
+        
+        for error in errors {
+            let report = self.build_report(error);
+            
+            // Write to buffer
+            report
+                .write(("input", source.clone()), &mut output)
+                .unwrap_or_else(|e| eprintln!("Failed to write report: {}", e));
+        }
+        
+        String::from_utf8(output).unwrap_or_else(|_| "Error generating report".to_string())
+    }
+
+    /// Replace spaces in error spans with visible character
+    fn visualize_spacing_errors(&self, input: &str, errors: &[ParseError]) -> String {
+        let mut chars: Vec<char> = input.chars().collect();
+
+        for error in errors {
+            // Only visualize spacing-related errors
+            if matches!(
+                error.kind,
+                ParseErrorKind::ExtraSpaceBeforeColon
+                    | ParseErrorKind::ExtraSpaceAfterColon
+                    | ParseErrorKind::TrailingSpaces
+            ) {
+                // Replace spaces in the error span with ▨
+                for i in error.span.clone() {
+                    if i < chars.len() && chars[i] == ' ' {
+                        chars[i] = '␣'; // Visible space character
+                    }
+                }
+            }
+        }
+
+        chars.iter().collect()
+    }
+
+    fn build_report(
+        &self,
+        error: &ParseError,
+    ) -> Report<'static, (&'static str, std::ops::Range<usize>)> {
+        let mut colors = ColorGenerator::new();
+        // Don't use colors for GitHub format
+        let error_color = if self.format == OutputFormat::Ascii {
+            None
+        } else {
+            Some(colors.next())
+        };
+
+        let (message, label_text, help_text) = match &error.kind {
+            ParseErrorKind::InvalidType { found, expected } => {
+                let msg = format!("Invalid commit type '{found}'");
+                let label = format!("'{found}' is not a valid type");
+                
+                // Find similar type for suggestion
+                let suggestion = find_similar(found, expected);
+                let valid_types = expected.join(", ");
+                
+                let help = if let Some(suggestion) = suggestion {
+                    format!("Did you mean '{suggestion}'?\nValid types: {valid_types}")
+                } else {
+                    format!("Valid types: {valid_types}")
+                };
+                (msg, label, Some(help))
+            }
+            ParseErrorKind::InvalidScope { found, expected } => {
+                let msg = format!("Invalid scope '{found}'");
+                let label = format!("'{found}' is not a valid scope");
+                
+                // Find similar scope for suggestion
+                let suggestion = find_similar(found, expected);
+                let valid_scopes = expected.join(", ");
+                
+                let help = if let Some(suggestion) = suggestion {
+                    format!("Did you mean '{suggestion}'?\nValid scopes: {valid_scopes}")
+                } else {
+                    format!("Valid scopes: {valid_scopes}")
+                };
+                (msg, label, Some(help))
+            }
+            ParseErrorKind::MissingClosingParen => (
+                "Missing closing parenthesis".to_string(),
+                "expected ')' here".to_string(),
+                Some("Add a closing ')' after the scope".to_string()),
+            ),
+            ParseErrorKind::MissingSeparator => (
+                "Missing separator".to_string(),
+                "expected ': ' here".to_string(),
+                Some("Add a colon followed by a space ': '".to_string()),
+            ),
+            ParseErrorKind::MissingDescription => (
+                "Missing description".to_string(),
+                "description is required".to_string(),
+                Some("Add a description after the colon".to_string()),
+            ),
+            ParseErrorKind::EmptyType => (
+                "Empty type".to_string(),
+                "type cannot be empty".to_string(),
+                Some("Add a commit type (e.g., 'feat', 'fix')".to_string()),
+            ),
+            ParseErrorKind::EmptyScope => (
+                "Empty scope".to_string(),
+                "scope cannot be empty".to_string(),
+                Some("Either remove the parentheses or add a scope inside them".to_string()),
+            ),
+            ParseErrorKind::UnexpectedChar(c) => (
+                format!("Unexpected character '{}'", c),
+                "unexpected character".to_string(),
+                None,
+            ),
+            ParseErrorKind::GenericParseError(msg) => (
+                msg.clone(),
+                "parse error".to_string(),
+                Some(
+                    "Ensure your commit message follows the format: type(scope): description"
+                        .to_string(),
+                ),
+            ),
+            ParseErrorKind::ExtraSpaceBeforeColon => (
+                "Extra space found between type and colon".to_string(),
+                "extra space found here".to_string(),
+                Some("Remove spaces between the type/scope and the colon".to_string()),
+            ),
+            ParseErrorKind::ExtraSpaceAfterColon => (
+                "Extra spaces after colon".to_string(),
+                "too many spaces".to_string(),
+                Some("Use exactly one space after the colon".to_string()),
+            ),
+            ParseErrorKind::MissingColon => (
+                "Missing colon separator".to_string(),
+                "expected ':' here".to_string(),
+                Some("Add a colon ':' after the type/scope, followed by a space".to_string()),
+            ),
+            ParseErrorKind::MissingSpace => (
+                "Missing space after colon".to_string(),
+                "expected space here".to_string(),
+                Some("Add a space after the colon, before the description".to_string()),
+            ),
+            ParseErrorKind::TrailingSpaces => (
+                "Trailing spaces at end of commit message".to_string(),
+                "trailing whitespace".to_string(),
+                Some("Remove trailing spaces from the end of the commit message".to_string()),
+            ),
+        };
+
+        let mut label = Label::new(("input", error.span.clone())).with_message(label_text);
+
+        if let Some(color) = error_color {
+            label = label.with_color(color);
+        }
+
+        let mut report_builder = Report::build(ReportKind::Error, ("input", error.span.clone()))
+            .with_message(&message)
+            .with_label(label);
+
+        if let Some(help) = help_text {
+            report_builder = report_builder.with_help(help);
+        }
+
+        // Apply color configuration based on format
+        if self.format == OutputFormat::Ascii {
+            report_builder =
+                report_builder.with_config(ariadne::Config::default().with_color(false));
+        }
+
+        report_builder.finish()
+    }
+
+    /// Print errors to stderr (for terminal) or stdout (for GitHub)
+    pub fn print_errors(&self, input: &str, errors: &[ParseError]) {
+        let report = self.report_errors(input, errors);
+
+        if self.format == OutputFormat::Ascii {
+            // Print to stdout for GitHub Actions to capture
+            print!("{}", report);
+        } else {
+            // Print to stderr for terminal
+            eprint!("{}", report);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::ParseErrorKind;
+
+    #[test]
+    fn test_report_invalid_type() {
+        let reporter = ErrorReporter::new(OutputFormat::Color);
+        let error = ParseError::new(
+            ParseErrorKind::InvalidType {
+                found: "fature".to_string(),
+                expected: vec!["feat".to_string(), "fix".to_string()],
+            },
+            0..6,
+        );
+
+        let input = "fature: description";
+        let report = reporter.report_errors(input, &[error]);
+
+        assert!(report.contains("Invalid commit type"));
+        assert!(report.contains("fature"));
+    }
+
+    #[test]
+    fn test_report_invalid_scope() {
+        let reporter = ErrorReporter::new(OutputFormat::Color);
+        let error = ParseError::new(
+            ParseErrorKind::InvalidScope {
+                found: "wrong".to_string(),
+                expected: vec!["api".to_string(), "ui".to_string()],
+            },
+            5..10,
+        );
+
+        let input = "feat(wrong): description";
+        let report = reporter.report_errors(input, &[error]);
+
+        assert!(report.contains("Invalid scope"));
+        assert!(report.contains("wrong"));
+    }
+
+    #[test]
+    fn test_github_format_no_colors() {
+        let reporter = ErrorReporter::new(OutputFormat::Ascii);
+        let error = ParseError::new(ParseErrorKind::MissingSeparator, 4..4);
+
+        let input = "feat description";
+        let report = reporter.report_errors(input, &[error]);
+
+        // GitHub format should not contain ANSI escape codes
+        assert!(!report.contains("\x1b["));
+        assert!(report.contains("Missing separator"));
+    }
+}

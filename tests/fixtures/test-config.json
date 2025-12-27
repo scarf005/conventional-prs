@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "commitsOnly": true,
+  "types": ["feat", "fix"],
+  "scopes": ["api", "ui"],
+  "allowMergeCommits": true,
+  "targetUrl": "https://example.com"
+}

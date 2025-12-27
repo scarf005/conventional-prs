@@ -1,0 +1,7 @@
+{
+  // This is a JSONC file with comments
+  "enabled": true,
+  "types": ["feat", "fix", "docs"], // allowed types
+  "scopes": ["api"], /* allowed scopes */
+  "targetUrl": "https://example.com"
+}
