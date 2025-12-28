@@ -52,21 +52,25 @@ impl ErrorReporter {
                 .unwrap_or_else(|e| eprintln!("Failed to write report: {}", e));
         }
 
-        let rendered = String::from_utf8(output).unwrap_or_else(|_| "Error generating report".to_string());
+        let rendered =
+            String::from_utf8(output).unwrap_or_else(|_| "Error generating report".to_string());
 
         // Post-process to use custom characters for ranges vs points
         self.customize_underlines(rendered, errors)
     }
 
     /// Customize underline characters to distinguish ranges from single points
-    fn customize_underlines(&self, output: String, errors: &[ParseError]) -> String {
+    fn customize_underlines(&self, output: String, _errors: &[ParseError]) -> String {
         let lines: Vec<&str> = output.lines().collect();
         let mut result_lines = Vec::new();
 
         for line in &lines {
-            // Check if this line contains underline characters
-            if line.contains('┬') || line.contains('─') {
-                let customized = self.customize_underline_chars(line);
+            // Strip ANSI codes to check for underline characters
+            let stripped = Self::strip_ansi(line);
+
+            if stripped.contains('┬') || stripped.contains('─') {
+                // Customize while preserving ANSI codes
+                let customized = self.customize_with_ansi_preserved(line, &stripped);
                 result_lines.push(customized);
             } else {
                 result_lines.push(line.to_string());
@@ -74,6 +78,71 @@ impl ErrorReporter {
         }
 
         result_lines.join("\n") + "\n"
+    }
+
+    /// Customize underline characters while preserving ANSI escape codes
+    fn customize_with_ansi_preserved(&self, original: &str, stripped: &str) -> String {
+        // First, customize the stripped version to know what characters to output
+        let customized_stripped = self.customize_underline_chars(stripped);
+
+        // Build a mapping of stripped position to customized character
+        let customized_chars: Vec<char> = customized_stripped.chars().collect();
+
+        // Now rebuild the string with ANSI codes preserved
+        let mut result = String::new();
+        let mut stripped_idx = 0;
+        let mut chars = original.chars();
+
+        while let Some(ch) = chars.next() {
+            if ch == '\x1b' {
+                // Copy escape sequence as-is
+                result.push(ch);
+                if chars.next() == Some('[') {
+                    result.push('[');
+                    // Copy until we find the command letter
+                    for ch in chars.by_ref() {
+                        result.push(ch);
+                        if ch.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+            } else {
+                // This is a visible character - use the customized version
+                if stripped_idx < customized_chars.len() {
+                    result.push(customized_chars[stripped_idx]);
+                    stripped_idx += 1;
+                } else {
+                    result.push(ch);
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Simple ANSI escape code stripper
+    fn strip_ansi(s: &str) -> String {
+        let mut result = String::new();
+        let mut chars = s.chars();
+
+        while let Some(ch) = chars.next() {
+            if ch == '\x1b' {
+                // Skip escape sequence
+                if chars.next() == Some('[') {
+                    // Skip until we find a letter (the command)
+                    for ch in chars.by_ref() {
+                        if ch.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+            } else {
+                result.push(ch);
+            }
+        }
+
+        result
     }
 
     /// Customize underline characters: ranges get ╰─╯ boundaries, points get ╿
@@ -104,7 +173,8 @@ impl ErrorReporter {
                 let mut end = i;
 
                 // Extend through dashes and connectors
-                while end + 1 < chars.len() && (chars[end + 1] == '─' || chars[end + 1] == '┬') {
+                while end + 1 < chars.len() && (chars[end + 1] == '─' || chars[end + 1] == '┬')
+                {
                     end += 1;
                 }
 
@@ -113,7 +183,8 @@ impl ErrorReporter {
                     let has_connector = (start..=end).any(|idx| chars[idx] == '┬');
                     if has_connector {
                         // Find the last dash in this sequence
-                        if let Some(last_dash) = (start..=end).rev().find(|&idx| chars[idx] == '─') {
+                        if let Some(last_dash) = (start..=end).rev().find(|&idx| chars[idx] == '─')
+                        {
                             result[start] = '╰';
                             if last_dash != start {
                                 result[last_dash] = '╯';
@@ -171,11 +242,11 @@ impl ErrorReporter {
             ParseErrorKind::InvalidType { found, expected } => {
                 let msg = format!("Invalid commit type '{found}'");
                 let label = format!("'{found}' is not a valid type");
-                
+
                 // Find similar type for suggestion
                 let suggestion = find_similar(found, expected);
                 let valid_types = expected.join(", ");
-                
+
                 let help = if let Some(suggestion) = suggestion {
                     format!("Did you mean '{suggestion}'?\nValid types: {valid_types}")
                 } else {
@@ -186,11 +257,11 @@ impl ErrorReporter {
             ParseErrorKind::InvalidScope { found, expected } => {
                 let msg = format!("Invalid scope '{found}'");
                 let label = format!("'{found}' is not a valid scope");
-                
+
                 // Find similar scope for suggestion
                 let suggestion = find_similar(found, expected);
                 let valid_scopes = expected.join(", ");
-                
+
                 let help = if let Some(suggestion) = suggestion {
                     format!("Did you mean '{suggestion}'?\nValid scopes: {valid_scopes}")
                 } else {
@@ -314,8 +385,8 @@ impl ErrorReporter {
             "Invalid commit message format".to_string()
         };
 
-        let mut report_builder = Report::build(ReportKind::Error, ("input", main_span))
-            .with_message(message);
+        let mut report_builder =
+            Report::build(ReportKind::Error, ("input", main_span)).with_message(message);
 
         // Add a label for each error
         for (idx, error) in errors.iter().enumerate() {
@@ -328,8 +399,7 @@ impl ErrorReporter {
             let (_msg, label_text, help_text) = self.get_error_details(&error.kind);
             let label_with_num = format!("{label_text} (#{num})", num = idx + 1);
 
-            let mut label =
-                Label::new(("input", error.span.clone())).with_message(label_with_num);
+            let mut label = Label::new(("input", error.span.clone())).with_message(label_with_num);
 
             if let Some(color) = error_color {
                 label = label.with_color(color);
