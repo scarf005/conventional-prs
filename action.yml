@@ -1,0 +1,137 @@
+name: 'Conventional PR Validator'
+description: 'Validates PR titles and commit messages against Conventional Commits specification'
+author: 'Your Name'
+
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  config:
+    description: 'Path to configuration file'
+    required: false
+  github_token:
+    description: 'GitHub token for API access'
+    required: true
+    default: ${{ github.token }}
+  validate_pr_title:
+    description: 'Validate PR title'
+    required: false
+    default: 'true'
+  validate_commits:
+    description: 'Validate commit messages'
+    required: false
+    default: 'false'
+  validate_both:
+    description: 'Validate both PR title and commits'
+    required: false
+    default: 'false'
+
+outputs:
+  valid:
+    description: 'Whether validation passed'
+  errors:
+    description: 'Validation errors if any'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+
+    - name: Cache cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build validator
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}
+        cargo build --release
+
+    - name: Get PR title
+      id: pr
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: |
+        PR_TITLE=$(gh pr view ${{ github.event.pull_request.number }} --json title --jq '.title')
+        echo "title=$PR_TITLE" >> $GITHUB_OUTPUT
+
+    - name: Validate PR title
+      if: inputs.validate_pr_title == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        set +e
+        CONFIG_FLAG=""
+        if [ -n "${{ inputs.config }}" ]; then
+          CONFIG_FLAG="--config ${{ inputs.config }}"
+        fi
+
+        ${{ github.action_path }}/target/release/conventional-prs \
+          --input "${{ steps.pr.outputs.title }}" \
+          --format github \
+          $CONFIG_FLAG > validation_output.txt
+
+        EXIT_CODE=$?
+
+        if [ $EXIT_CODE -ne 0 ]; then
+          echo "❌ PR title validation failed:"
+          echo ""
+          echo '```'
+          cat validation_output.txt
+          echo '```'
+          exit 1
+        else
+          echo "✅ PR title is valid"
+        fi
+
+    - name: Get commit messages
+      id: commits
+      if: inputs.validate_commits == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: |
+        gh pr view ${{ github.event.pull_request.number }} --json commits --jq '.commits[].messageHeadline' > commits.txt
+
+    - name: Validate commits
+      if: inputs.validate_commits == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        set +e
+        CONFIG_FLAG=""
+        if [ -n "${{ inputs.config }}" ]; then
+          CONFIG_FLAG="--config ${{ inputs.config }}"
+        fi
+
+        FAILED=0
+        while IFS= read -r commit; do
+          ${{ github.action_path }}/target/release/conventional-prs \
+            --input "$commit" \
+            --format github \
+            $CONFIG_FLAG > validation_output.txt
+
+          if [ $? -ne 0 ]; then
+            echo "❌ Commit validation failed: $commit"
+            echo ""
+            echo '```'
+            cat validation_output.txt
+            echo '```'
+            FAILED=1
+          fi
+        done < commits.txt
+
+        if [ $FAILED -eq 1 ]; then
+          exit 1
+        else
+          echo "✅ All commits are valid"
+        fi

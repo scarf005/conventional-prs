@@ -1,0 +1,20 @@
+{
+  "name": "Conventional PR Validator (Alpha)",
+  "url": "https://github.com/yourusername/conventional-prs",
+  "hook_attributes": {
+    "url": "https://example.com/webhook"
+  },
+  "redirect_url": "https://example.com/callback",
+  "description": "Validates PR titles and commit messages against Conventional Commits specification",
+  "public": false,
+  "default_permissions": {
+    "contents": "read",
+    "pull_requests": "write",
+    "checks": "write",
+    "statuses": "write"
+  },
+  "default_events": [
+    "pull_request",
+    "pull_request_target"
+  ]
+}
