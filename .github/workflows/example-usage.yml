@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate PR Title
-        uses: yourusername/conventional-prs@v0.1.0-alpha
+        uses: scarf005/conventional-prs@v0.1.0-alpha
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           validate_pr_title: 'true'
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate All Commits
-        uses: yourusername/conventional-prs@v0.1.0-alpha
+        uses: scarf005/conventional-prs@v0.1.0-alpha
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           validate_commits: 'true'
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate with Custom Rules
-        uses: yourusername/conventional-prs@v0.1.0-alpha
+        uses: scarf005/conventional-prs@v0.1.0-alpha
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           validate_pr_title: 'true'

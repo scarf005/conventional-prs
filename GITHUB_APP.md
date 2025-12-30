@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate PR Title
-        uses: yourusername/conventional-prs@v0.1.0-alpha
+        uses: scarf005/conventional-prs@v0.1.0-alpha
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           validate_pr_title: 'true'
@@ -94,7 +94,7 @@ The action accepts these inputs:
 ### Validate PR Title Only
 
 ```yaml
-- uses: yourusername/conventional-prs@v0.1.0-alpha
+- uses: scarf005/conventional-prs@v0.1.0-alpha
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     validate_pr_title: 'true'
@@ -103,7 +103,7 @@ The action accepts these inputs:
 ### Validate All Commits
 
 ```yaml
-- uses: yourusername/conventional-prs@v0.1.0-alpha
+- uses: scarf005/conventional-prs@v0.1.0-alpha
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     validate_commits: 'true'
@@ -112,7 +112,7 @@ The action accepts these inputs:
 ### Use Custom Configuration
 
 ```yaml
-- uses: yourusername/conventional-prs@v0.1.0-alpha
+- uses: scarf005/conventional-prs@v0.1.0-alpha
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     config: .github/conventional-config.yml
@@ -186,4 +186,4 @@ Check that:
 
 ## Support
 
-For issues and feature requests, visit: https://github.com/yourusername/conventional-prs/issues
+For issues and feature requests, visit: https://github.com/scarf005/conventional-prs/issues

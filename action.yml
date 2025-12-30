@@ -1,6 +1,6 @@
-name: 'Conventional PR Validator'
+name: 'Conventional PRs'
 description: 'Validates PR titles and commit messages against Conventional Commits specification'
-author: 'Your Name'
+author: 'scarf005'
 
 branding:
   icon: 'check-circle'

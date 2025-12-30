@@ -1,6 +1,6 @@
 {
   "name": "Conventional PR Validator (Alpha)",
-  "url": "https://github.com/yourusername/conventional-prs",
+  "url": "https://github.com/scarf005/conventional-prs",
   "hook_attributes": {
     "url": "https://example.com/webhook"
   },
