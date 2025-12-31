@@ -52,6 +52,51 @@ For use in GitHub Actions (outputs plain ASCII without colors):
 conventional-prs --input "feat: add feature" --format github
 ```
 
+## GitHub Actions Usage
+
+### Standard Usage (Recommended)
+
+Add this action to your workflow. GitHub will build the Docker container from the repository:
+
+```yaml
+name: Validate Conventional Commits
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR Title
+        uses: scarf005/conventional-prs@v0.1.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          validate_pr_title: 'true'
+```
+
+**Inputs:**
+- `github_token`: GitHub token (required, defaults to `${{ github.token }}`)
+- `config`: Path to custom config file (optional)
+- `validate_pr_title`: Validate PR title (default: `'true'`)
+- `validate_commits`: Validate all commits (default: `'false'`)
+- `validate_both`: Validate both title and commits (default: `'false'`)
+
+### Advanced: Pre-built Container Images
+
+For faster execution, you can use pre-built images from GitHub Container Registry:
+
+```yaml
+- name: Validate PR Title
+  uses: docker://ghcr.io/scarf005/conventional-prs:v0.1.0
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    INPUT_VALIDATE_PR_TITLE: 'true'
+```
+
+**Note:** Using pre-built images skips the build step but requires manually managing environment variables with the `INPUT_*` prefix.
+
 ## Configuration
 
 The tool loads configuration from the following locations (in order of precedence):
