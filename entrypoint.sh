@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+git config --global --add safe.directory /github/workspace
+
 CONFIG_FLAG=""
 if [ -n "$INPUT_CONFIG" ]; then
   CONFIG_FLAG="--config $INPUT_CONFIG"
