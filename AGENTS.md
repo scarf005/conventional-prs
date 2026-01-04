@@ -31,7 +31,6 @@ GitHub Action to validate Pull Request titles and commit messages.
 ## Tech Stack & Dependencies
 
 - **Language:** Rust (Latest Stable, 2024 Edition or newer)
-- **Parser:** `chumsky = "0.10"` (Use the latest stable API, not 0.9 or 1.0-alpha)
 - **Error Reporting:** `ariadne = "0.6"`
 - **CLI Args:** `clap` (with derive features)
 - **Serialization:** `serde`, `serde_json`, `serde_yaml`, `toml`
@@ -85,8 +84,7 @@ Map the `Ezard/semantic-prs` schema to a Rust struct. Use
 
 ## 2. Parsing Logic (`parser.rs`)
 
-Use **Chumsky (v0.10)** to create a fault-tolerant parser.
-*Note: v0.10 API (Input traits, GATs) is significantly different from v0.9. Ensure you use the modern API.*
+Implement a fault-tolerant parser that collects all errors simultaneously instead of stopping at the first error.
 
 ### Grammar Rules
 
@@ -100,8 +98,7 @@ Standard Conventional Commit Header: `type(scope): description` or `type: descri
 2. **Scope (Optional):**
    - Surrounded by `(` and `)`.
    - If `scopes` is defined in Config, the value must be in the list.
-   - _Recovery:_ Handle missing closing parenthesis `)` gracefully using
-     `recover_with`.
+   - _Recovery:_ Handle missing closing parenthesis `)` gracefully and continue parsing.
 3. **Breaking Change (`!`)**:
    - Optional `!` before the `:`.
 4. **Separator:**
@@ -112,8 +109,8 @@ Standard Conventional Commit Header: `type(scope): description` or `type: descri
 
 ### Error Handling Strategy
 
-- Use `Simple::custom` (or v0.10 equivalent like `Rich`) to generate semantic errors.
-- Use `recover_with(skip_then_retry_until(...))` or `via_parser(...)` to skip bad tokens and resync.
+- Collect all errors encountered during parsing instead of stopping at the first one.
+- Track error location and type (missing token, invalid type, invalid scope, etc.).
 - **Tests:** Create tests for each recovery scenario (e.g., "test_missing_scope_parenthesis", "test_invalid_type_but_valid_rest").
 
 ---
@@ -143,7 +140,7 @@ Use **Ariadne (v0.6)** to visualize errors.
 2. **Load Config:** Read from file or defaults.
 3. **Get Input:** Read the commit message/PR title.
 4. **Validate:**
-   - Run the Chumsky parser.
+   - Parse and validate the commit message against the grammar rules.
    - Check business logic (e.g., allowed scopes).
 5. **Output:**
    - If valid: Exit code `0`.

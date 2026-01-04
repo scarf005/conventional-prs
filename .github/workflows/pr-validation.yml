@@ -1,0 +1,42 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  validate-pr-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate PR Title
+        uses: ./
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          validate_pr_title: 'true'
+
+  validate-commits:
+    name: Validate Commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate All Commits
+        uses: ./
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          validate_commits: 'true'
+
+  validate-both:
+    name: Validate Both Title and Commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Both
+        uses: ./
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          validate_both: 'true'
