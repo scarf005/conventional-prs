@@ -1,4 +1,4 @@
-// Parser implementation without Chumsky dependency for better error messages
+// Parser implementation for Conventional Commit headers with fault-tolerant error collection
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CommitHeader {
