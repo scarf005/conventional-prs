@@ -2,22 +2,23 @@
 
 ## CRITICAL RULES - NEVER VIOLATE
 
-- **MUST** use latest stable Rust toolchain (currently 1.92, NOT 1.84)
+- **MUST** use latest stable Rust toolchain (currently 1.92)
   - Check latest version: `curl -s https://static.rust-lang.org/dist/channel-rust-stable.toml | grep "^version"`
-  - NEVER hardcode old versions in workflows
+  - NEVER hardcode versions in workflows
 - **MUST** install mold linker in ALL CI environments (GitHub Actions, Docker)
   - `.cargo/config.toml` requires mold - CI WILL FAIL without it
 - **MUST** use pre-built container `ghcr.io/scarf005/conventional-prs:main` for PR validation
   - DO NOT rebuild from source on every PR
-  - Only build container on main branch pushes
-- **MUST** commit after implementing a subtask
+  - Only build container on main branch pushes via `.github/workflows/docker.yml`
+- **MUST** commit after implementing subtasks
 - **MUST** write tests (Unit tests for parser recovery are mandatory)
-- **MUST NOT** reinvent wheel: Use existing crates from crates.io instead of implementing common algorithms (e.g., use `strsim` for string similarity, not manual Levenshtein)
-- **MUST USE** named format parameters in macros like `format!`, `println!`, etc.
-  - ✅ GOOD: `format!("Hello {name}")` when `name` is in scope
-  - ❌ BAD: `format!("Hello {name}", name = name)` (redundant)
-  - ✅ GOOD: `format!("Hello {user}", user = get_user())` when you need to call a function or use an expression
-  - The named parameter is ONLY needed when the expression is not just a simple variable with the same name
+- **MUST NOT** reinvent wheel: Use existing crates (e.g., `strsim` for string similarity)
+- **MUST USE** named format parameters only when needed
+  - ✅ `format!("Hello {name}")` when `name` is in scope
+  - ❌ `format!("Hello {name}", name = name)` (redundant)
+  - ✅ `format!("Hello {user}", user = get_user())` when calling functions
+- **LICENSE**: AGPL-3.0-only (not viral to users running the action)
+- **MUST** track `Cargo.lock` in version control (binary project)
 
 ## Project Overview
 
@@ -136,8 +137,12 @@ Use **Ariadne (v0.6)** to visualize errors.
    - Print to `stderr`.
 2. **GitHub Action Output (`--format github`):**
    - **CRITICAL:** Disable colors (`Config::default().with_color(false)`).
-   - Generate a clean ASCII report suitable for a Markdown code block.
+   - Generate clean ASCII report suitable for Markdown code blocks.
    - Print to `stdout` so it can be captured by the GitHub Action workflow.
+   - Output appears in:
+     - GitHub Actions logs (stdout)
+     - Workflow run summary (`$GITHUB_STEP_SUMMARY`, wrapped in code fences)
+     - PR comments (with HTML marker for update-in-place behavior)
 
 ---
 
@@ -161,12 +166,34 @@ Use **Ariadne (v0.6)** to visualize errors.
 
 ---
 
+## 5. GitHub Action Integration (`entrypoint.sh`)
+
+The action runs as a Docker container and:
+
+1. **Extracts PR data** from `$GITHUB_EVENT_PATH` using `jq` (no git checkout needed)
+2. **Validates PR title** using `conventional-prs --input "$PR_TITLE" --format github`
+3. **Posts/updates comments** using GitHub API (`curl`, NOT `gh` CLI):
+   - Uses HTML marker `<!-- conventional-prs-title-validation -->` for update-in-place
+   - Removes user login filter (marker is unique enough)
+   - Consistent `curl` calls for both success and failure paths
+4. **Outputs to multiple locations**:
+   - `stdout` (GitHub Actions logs)
+   - `$GITHUB_STEP_SUMMARY` (wrapped in code fences to preserve indentation)
+   - PR comment (Markdown formatted with Ariadne output)
+
+**Key Implementation Details:**
+- `GITHUB_TOKEN` required for posting comments (not viral, just API access)
+- No `gh` CLI dependency (pure `curl` + `jq`)
+- No git repository checkout needed (reads from `$GITHUB_EVENT_PATH`)
+
+---
+
 ## Example Usage
 
 **Input:**
 
 ```bash
-./validator --input "fature(api) fixed login" --format github
+./conventional-prs --input "fature(api) fixed login" --format github
 ```
 
 **Expected Output (Stdout):**
@@ -186,3 +213,12 @@ Error: Missing separator
    │            │
    │            ╰── expected ': ' here
 ```
+
+---
+
+## Deployment Architecture
+
+- **Container Registry**: `ghcr.io/scarf005/conventional-prs:main`
+- **Build Trigger**: Pushes to `main` branch via `.github/workflows/docker.yml`
+- **PR Validation**: Uses pre-built container (NO rebuilds on every PR)
+- **Dependencies**: `mold` linker installed in Dockerfile AND all CI workflows
