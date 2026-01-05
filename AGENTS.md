@@ -1,5 +1,15 @@
-# AGENTS.md
+# AGENTS.MD
 
+## CRITICAL RULES - NEVER VIOLATE
+
+- **MUST** use latest stable Rust toolchain (currently 1.92, NOT 1.84)
+  - Check latest version: `curl -s https://static.rust-lang.org/dist/channel-rust-stable.toml | grep "^version"`
+  - NEVER hardcode old versions in workflows
+- **MUST** install mold linker in ALL CI environments (GitHub Actions, Docker)
+  - `.cargo/config.toml` requires mold - CI WILL FAIL without it
+- **MUST** use pre-built container `ghcr.io/scarf005/conventional-prs:main` for PR validation
+  - DO NOT rebuild from source on every PR
+  - Only build container on main branch pushes
 - **MUST** commit after implementing a subtask
 - **MUST** write tests (Unit tests for parser recovery are mandatory)
 - **MUST NOT** reinvent wheel: Use existing crates from crates.io instead of implementing common algorithms (e.g., use `strsim` for string similarity, not manual Levenshtein)
