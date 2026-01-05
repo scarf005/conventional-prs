@@ -1,5 +1,5 @@
 use clap::Parser;
-use conventional_prs::{Config, ConventionalParser, ErrorReporter, OutputFormat};
+use conventional_prs::{Config, ConventionalParser, OutputFormat};
 use std::io::{self, Read};
 use std::path::PathBuf;
 use std::process;
@@ -71,26 +71,21 @@ fn main() {
         }
     };
 
-    // Validate the input
     let parser = ConventionalParser::new(config.types.clone(), config.scopes.clone());
     let output_format = OutputFormat::from(cli.format);
-    let reporter = ErrorReporter::new(output_format);
 
-    match parser.parse(&input) {
-        Ok(_header) => {
-            // Valid commit message
-            if output_format == OutputFormat::Ascii {
-                println!("✓ Valid conventional commit");
-            } else {
-                eprintln!("✓ Valid conventional commit");
-            }
-            process::exit(0);
+    let result = parser.parse(&input);
+
+    if result.is_ok() {
+        if output_format == OutputFormat::Ascii {
+            println!("✓ Valid conventional commit");
+        } else {
+            eprintln!("✓ Valid conventional commit");
         }
-        Err(errors) => {
-            // Invalid commit message - print errors
-            reporter.print_errors(&input, &errors);
-            process::exit(1);
-        }
+        process::exit(0);
+    } else {
+        result.print_errors(output_format);
+        process::exit(1);
     }
 }
 

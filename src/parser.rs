@@ -44,6 +44,65 @@ impl ParseError {
     }
 }
 
+/// Parse result that bundles input with output/errors.
+/// Eliminates the need to pass input separately to error reporters.
+pub struct ParseResult<'a> {
+    input: &'a str,
+    result: Result<CommitHeader, Vec<ParseError>>,
+}
+
+impl<'a> ParseResult<'a> {
+    fn new(input: &'a str, result: Result<CommitHeader, Vec<ParseError>>) -> Self {
+        Self { input, result }
+    }
+
+    pub fn is_ok(&self) -> bool {
+        self.result.is_ok()
+    }
+
+    pub fn is_err(&self) -> bool {
+        self.result.is_err()
+    }
+
+    pub fn output(&self) -> Option<&CommitHeader> {
+        self.result.as_ref().ok()
+    }
+
+    pub fn errors(&self) -> Option<&[ParseError]> {
+        self.result.as_ref().err().map(|e| e.as_slice())
+    }
+
+    pub fn input(&self) -> &str {
+        self.input
+    }
+
+    pub fn unwrap(self) -> CommitHeader {
+        self.result.unwrap()
+    }
+
+    pub fn into_result(self) -> Result<CommitHeader, Vec<ParseError>> {
+        self.result
+    }
+
+    pub fn unwrap_err(self) -> Vec<ParseError> {
+        self.result.unwrap_err()
+    }
+
+    pub fn report(&self, format: crate::report::OutputFormat) -> Option<String> {
+        self.errors().map(|errors| {
+            let reporter = crate::report::ErrorReporter::new(format);
+            reporter.report_errors(self.input, errors)
+        })
+    }
+
+    pub fn print_errors(&self, format: crate::report::OutputFormat) {
+        if let Some(errors) = self.errors() {
+            let reporter = crate::report::ErrorReporter::new(format);
+            eprint!("{}", reporter.report_errors(self.input, errors));
+        }
+    }
+}
+
 pub struct ConventionalParser {
     allowed_types: Vec<String>,
     allowed_scopes: Option<Vec<String>>,
@@ -58,14 +117,16 @@ impl ConventionalParser {
     }
 
     /// Parse a conventional commit header with fault tolerance.
-    /// Returns Ok with the parsed header if valid, or Err with all collected errors.
-    pub fn parse(&self, input: &str) -> Result<CommitHeader, Vec<ParseError>> {
-        // Try manual parsing for better error messages
+    /// Returns a ParseResult that bundles input with output/errors.
+    pub fn parse<'a>(&self, input: &'a str) -> ParseResult<'a> {
+        let result = self.parse_internal(input);
+        ParseResult::new(input, result)
+    }
+
+    fn parse_internal(&self, input: &str) -> Result<CommitHeader, Vec<ParseError>> {
         let (header_opt, mut all_errors) = self.manual_parse(input);
 
-        // If we managed to extract a type, validate it
         if let Some(header) = &header_opt {
-            // Check if type is allowed
             if !self.allowed_types.contains(&header.commit_type) {
                 all_errors.push(ParseError::new(
                     ParseErrorKind::InvalidType {
@@ -76,11 +137,10 @@ impl ConventionalParser {
                 ));
             }
 
-            // Check if scope is allowed (if scopes are restricted)
             if let Some(ref allowed_scopes) = self.allowed_scopes {
                 if let Some(ref scope) = header.scope {
                     if !allowed_scopes.contains(scope) {
-                        let scope_start = header.commit_type.len() + 1; // +1 for '('
+                        let scope_start = header.commit_type.len() + 1;
                         all_errors.push(ParseError::new(
                             ParseErrorKind::InvalidScope {
                                 found: scope.clone(),
@@ -93,7 +153,6 @@ impl ConventionalParser {
             }
         }
 
-        // Return result
         if all_errors.is_empty() {
             Ok(header_opt.unwrap())
         } else {
@@ -133,27 +192,36 @@ impl ConventionalParser {
             let paren_pos = pos;
             pos += 1;
 
-            if pos < chars.len() && chars[pos] == ')' {
-                let scope_text: String = chars[scope_start..pos].iter().collect();
-                if scope_text.is_empty() {
-                    errors.push(ParseError::new(
-                        ParseErrorKind::EmptyScope,
-                        scope_start - 1..pos + 1,
-                    ));
-                } else {
-                    scope = Some(scope_text);
+            // Search for closing paren
+            let mut scope_end = pos;
+            let mut found_closing = false;
+            while scope_end < chars.len() {
+                if chars[scope_end] == ')' {
+                    found_closing = true;
+                    break;
                 }
-                pos += 1; // Skip ')'
+                scope_end += 1;
+            }
+
+            let scope_text: String = chars[scope_start..scope_end].iter().collect();
+
+            if scope_text.is_empty() {
+                errors.push(ParseError::new(
+                    ParseErrorKind::EmptyScope,
+                    paren_pos..scope_end + if found_closing { 1 } else { 0 },
+                ));
             } else {
-                // Missing closing paren - extract what we can as scope
-                let scope_text: String = chars[scope_start..pos].iter().collect();
+                scope = Some(scope_text);
+            }
+
+            if found_closing {
+                pos = scope_end + 1; // Move past ')'
+            } else {
                 errors.push(ParseError::new(
                     ParseErrorKind::MissingClosingParen,
-                    paren_pos..pos,
+                    paren_pos..scope_end,
                 ));
-                if !scope_text.is_empty() && !scope_text.trim().is_empty() {
-                    scope = Some(scope_text.trim().to_string());
-                }
+                pos = scope_end;
             }
         }
 
@@ -331,11 +399,9 @@ mod tests {
         let errors = result.unwrap_err();
         assert!(!errors.is_empty());
         // Check that we got an InvalidType error
-        assert!(
-            errors
-                .iter()
-                .any(|e| matches!(&e.kind, ParseErrorKind::InvalidType { .. }))
-        );
+        assert!(errors
+            .iter()
+            .any(|e| matches!(&e.kind, ParseErrorKind::InvalidType { .. })));
     }
 
     #[test]
@@ -347,11 +413,9 @@ mod tests {
         let result = parser.parse("feat(core): description");
         assert!(result.is_err());
         let errors = result.unwrap_err();
-        assert!(
-            errors
-                .iter()
-                .any(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
-        );
+        assert!(errors
+            .iter()
+            .any(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. })));
     }
 
     #[test]
@@ -369,7 +433,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat:description");
         // Should still parse due to recovery
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.description, "description");
         }
     }
@@ -397,7 +461,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("fature(api: description");
         // Should report invalid type even with missing closing paren
-        if let Err(errors) = result {
+        if let Err(errors) = result.into_result() {
             // May report parse error or invalid type
             assert!(!errors.is_empty());
         }
@@ -408,7 +472,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("fix:no space here");
         // Should recover and parse successfully
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.commit_type, "fix");
             assert_eq!(header.description, "no space here");
         }
@@ -427,7 +491,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat(api/v2): description");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.scope, Some("api/v2".to_string()));
         }
     }
@@ -437,7 +501,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat(my scope): description");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.scope, Some("my scope".to_string()));
         }
     }
@@ -447,7 +511,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat(api)!: major change");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.commit_type, "feat");
             assert_eq!(header.scope, Some("api".to_string()));
             assert!(header.breaking);
@@ -460,7 +524,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat: description: with: colons");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.description, "description: with: colons");
         }
     }
@@ -470,7 +534,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat: añadir función 🎉");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.description, "añadir función 🎉");
         }
     }
@@ -488,7 +552,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat(api-v2-beta3): description");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.scope, Some("api-v2-beta3".to_string()));
         }
     }
@@ -500,12 +564,10 @@ mod tests {
         let result = parser.parse("fix(api): description");
         // Should fail on invalid type
         assert!(result.is_err());
-        if let Err(errors) = result {
-            assert!(
-                errors
-                    .iter()
-                    .any(|e| matches!(&e.kind, ParseErrorKind::InvalidType { .. }))
-            );
+        if let Err(errors) = result.into_result() {
+            assert!(errors
+                .iter()
+                .any(|e| matches!(&e.kind, ParseErrorKind::InvalidType { .. })));
         }
     }
 
@@ -516,12 +578,10 @@ mod tests {
         let result = parser.parse("feat(ui): description");
         // Should fail on invalid scope
         assert!(result.is_err());
-        if let Err(errors) = result {
-            assert!(
-                errors
-                    .iter()
-                    .any(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
-            );
+        if let Err(errors) = result.into_result() {
+            assert!(errors
+                .iter()
+                .any(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. })));
         }
     }
 
@@ -532,12 +592,10 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat(api: description");
         assert!(result.is_err());
-        if let Err(errors) = result {
-            assert!(
-                errors
-                    .iter()
-                    .any(|e| matches!(&e.kind, ParseErrorKind::MissingClosingParen))
-            );
+        if let Err(errors) = result.into_result() {
+            assert!(errors
+                .iter()
+                .any(|e| matches!(&e.kind, ParseErrorKind::MissingClosingParen)));
         }
     }
 
@@ -595,7 +653,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat(api core): description");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.scope, Some("api core".to_string()));
         }
     }
@@ -605,7 +663,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat: add feature: the new one");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.description, "add feature: the new one");
         }
     }
@@ -615,7 +673,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat: add feature (with notes)");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.description, "add feature (with notes)");
         }
     }
@@ -625,7 +683,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat!: breaking without scope");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert!(header.breaking);
             assert_eq!(header.scope, None);
         }
@@ -636,7 +694,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat!!: description");
         // Should only recognize first ! as breaking indicator
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert!(header.description.starts_with("!: description") || header.breaking);
         }
     }
@@ -646,7 +704,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat: description\nsecond line");
         // Should only parse first line
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert!(!header.description.contains('\n'));
         }
     }
@@ -674,7 +732,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat(апі): description");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.scope, Some("апі".to_string()));
         }
     }
@@ -684,7 +742,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat: add 🎉 celebration");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert!(header.description.contains('🎉'));
         }
     }
@@ -696,7 +754,7 @@ mod tests {
         let input = format!("feat: {long_desc}");
         let result = parser.parse(&input);
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.description.len(), 500);
         }
     }
@@ -706,7 +764,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat(api_v2): description");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.scope, Some("api_v2".to_string()));
         }
     }
@@ -716,7 +774,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat(api.v2): description");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.scope, Some("api.v2".to_string()));
         }
     }
@@ -756,24 +814,20 @@ mod tests {
         // Extra spaces and trailing spaces should be errors
         let result = parser.parse("feat:   description with leading spaces   ");
         assert!(result.is_err());
-        if let Err(errors) = result {
+        if let Err(errors) = result.into_result() {
             // Should have error for extra spaces after colon and trailing spaces
-            assert!(
-                errors
-                    .iter()
-                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceAfterColon))
-            );
-            assert!(
-                errors
-                    .iter()
-                    .any(|e| matches!(&e.kind, ParseErrorKind::TrailingSpaces))
-            );
+            assert!(errors
+                .iter()
+                .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceAfterColon)));
+            assert!(errors
+                .iter()
+                .any(|e| matches!(&e.kind, ParseErrorKind::TrailingSpaces)));
         }
 
         // Valid commit with proper spacing
         let result = parser.parse("feat: description with no extra spaces");
         assert!(result.is_ok());
-        if let Ok(header) = result {
+        if let Ok(header) = result.into_result() {
             assert_eq!(header.description, "description with no extra spaces");
         }
     }
@@ -783,12 +837,10 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat : description");
         assert!(result.is_err());
-        if let Err(errors) = result {
-            assert!(
-                errors
-                    .iter()
-                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceBeforeColon))
-            );
+        if let Err(errors) = result.into_result() {
+            assert!(errors
+                .iter()
+                .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceBeforeColon)));
         }
     }
 
@@ -797,12 +849,10 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat:  description");
         assert!(result.is_err());
-        if let Err(errors) = result {
-            assert!(
-                errors
-                    .iter()
-                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceAfterColon))
-            );
+        if let Err(errors) = result.into_result() {
+            assert!(errors
+                .iter()
+                .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceAfterColon)));
         }
     }
 
@@ -811,12 +861,10 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat: description ");
         assert!(result.is_err());
-        if let Err(errors) = result {
-            assert!(
-                errors
-                    .iter()
-                    .any(|e| matches!(&e.kind, ParseErrorKind::TrailingSpaces))
-            );
+        if let Err(errors) = result.into_result() {
+            assert!(errors
+                .iter()
+                .any(|e| matches!(&e.kind, ParseErrorKind::TrailingSpaces)));
         }
     }
 
@@ -825,7 +873,7 @@ mod tests {
         let parser = default_parser();
         let result = parser.parse("feat :  description  ");
         assert!(result.is_err());
-        if let Err(errors) = result {
+        if let Err(errors) = result.into_result() {
             // Should catch space before colon, extra spaces after, and trailing
             assert!(errors.len() >= 2);
         }

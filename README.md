@@ -2,17 +2,57 @@
 
 Validates PR titles against [Conventional Commits](https://www.conventionalcommits.org/). Posts error comments on PRs.
 
+## GitHub Action
+
+Add to `.github/workflows/pr-validation.yml`:
+
 ```yaml
-- uses: docker://ghcr.io/scarf005/conventional-prs:main
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Required to post comments
+name: PR Validation
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: docker://ghcr.io/scarf005/conventional-prs:main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-## Local Usage
+Uses pre-built Docker images for fast validation (no build step required).
+
+## CLI Usage
 
 ```bash
 cargo install --git https://github.com/scarf005/conventional-prs
 conventional-prs --input "feat: add feature"
+```
+
+## Rust Library
+
+```toml
+[dependencies]
+conventional-prs = { git = "https://github.com/scarf005/conventional-prs" }
+```
+
+```rust
+use conventional_prs::{ConventionalParser, OutputFormat};
+
+let parser = ConventionalParser::new(
+    vec!["feat".into(), "fix".into()],
+    Some(vec!["api".into(), "ui".into()])
+);
+
+let result = parser.parse("feat(api): add endpoint");
+if result.is_ok() {
+    println!("Valid commit!");
+} else {
+    result.print_errors(OutputFormat::Color);
+}
 ```
 
 ## Configuration
