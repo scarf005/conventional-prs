@@ -29,3 +29,4 @@ Compatible with [semantic-prs](https://github.com/Ezard/semantic-prs).
 ## License
 
 AGPL-3.0-only
+test final
