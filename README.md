@@ -1,4 +1,4 @@
-# conventional-prs
+# conventional-prs!
 
 Validates PR titles against [Conventional Commits](https://www.conventionalcommits.org/). Posts error comments on PRs.
 
