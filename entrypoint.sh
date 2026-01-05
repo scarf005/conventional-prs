@@ -58,10 +58,15 @@ Your PR title must follow the [Conventional Commits](https://www.conventionalcom
       echo "✅ PR title is valid"
       
       COMMENT_MARKER="<!-- conventional-prs-title-validation -->"
+      COMMENT_BODY="${COMMENT_MARKER}
+## ✅ PR Title Validation Passed
+
+Your PR title follows the [Conventional Commits](https://www.conventionalcommits.org/) specification. Great job! 🎉"
+
       EXISTING_COMMENT=$(gh pr view "$PR_NUMBER" --json comments --jq "[.comments[] | select(.body | contains(\"$COMMENT_MARKER\")) | select(.author.login == \"github-actions\")] | first | .id")
       
       if [ -n "$EXISTING_COMMENT" ] && [ "$EXISTING_COMMENT" != "null" ]; then
-        gh api -X DELETE "/repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING_COMMENT"
+        gh api -X PATCH "/repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING_COMMENT" -f body="$COMMENT_BODY"
       fi
     fi
   fi
@@ -124,10 +129,15 @@ Each commit message must follow the [Conventional Commits](https://www.conventio
       echo "✅ All commits are valid"
       
       COMMENT_MARKER="<!-- conventional-prs-commits-validation -->"
+      COMMENT_BODY="${COMMENT_MARKER}
+## ✅ Commit Validation Passed
+
+All commits follow the [Conventional Commits](https://www.conventionalcommits.org/) specification. Great job! 🎉"
+
       EXISTING_COMMENT=$(gh pr view "$PR_NUMBER" --json comments --jq "[.comments[] | select(.body | contains(\"$COMMENT_MARKER\")) | select(.author.login == \"github-actions\")] | first | .id")
       
       if [ -n "$EXISTING_COMMENT" ] && [ "$EXISTING_COMMENT" != "null" ]; then
-        gh api -X DELETE "/repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING_COMMENT"
+        gh api -X PATCH "/repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING_COMMENT" -f body="$COMMENT_BODY"
       fi
     fi
   fi
