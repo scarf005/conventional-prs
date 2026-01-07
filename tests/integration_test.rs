@@ -26,8 +26,9 @@ fn test_end_to_end_error_reporting() {
     let reporter = ErrorReporter::new(OutputFormat::Ascii);
 
     let input = "fature: typo";
-    if let Err(errors) = parser.parse(input) {
-        let report = reporter.report_errors(input, &errors);
+    let result = parser.parse(input);
+    if let Some(errors) = result.errors() {
+        let report = reporter.report_errors(input, errors);
         assert!(report.contains("Invalid commit type"));
         assert!(report.contains("fature"));
         // GitHub format should not have ANSI colors
@@ -62,14 +63,14 @@ fn test_end_to_end_breaking_changes() {
     // Breaking change without scope
     let result = parser.parse("feat!: breaking change");
     assert!(result.is_ok());
-    if let Ok(header) = result {
+    if let Some(header) = result.output() {
         assert!(header.breaking);
     }
 
     // Breaking change with scope
     let result = parser.parse("feat(api)!: breaking change");
     assert!(result.is_ok());
-    if let Ok(header) = result {
+    if let Some(header) = result.output() {
         assert!(header.breaking);
         assert_eq!(header.scope, Some("api".to_string()));
     }
@@ -124,15 +125,16 @@ fn test_reporter_formats() {
     let parser = ConventionalParser::new(config.types, config.scopes);
 
     let input = "wrongtype: desc";
-    if let Err(errors) = parser.parse(input) {
+    let result = parser.parse(input);
+    if let Some(errors) = result.errors() {
         // Test default format (with colors)
         let reporter_default = ErrorReporter::new(OutputFormat::Color);
-        let report_default = reporter_default.report_errors(input, &errors);
+        let report_default = reporter_default.report_errors(input, errors);
         // Default format may have colors (ANSI codes)
 
         // Test GitHub format (no colors)
         let reporter_github = ErrorReporter::new(OutputFormat::Ascii);
-        let report_github = reporter_github.report_errors(input, &errors);
+        let report_github = reporter_github.report_errors(input, errors);
         assert!(!report_github.contains("\x1b["));
 
         // Both should contain error message
