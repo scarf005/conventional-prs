@@ -137,19 +137,18 @@ impl ConventionalParser {
                 ));
             }
 
-            if let Some(ref allowed_scopes) = self.allowed_scopes {
-                if let Some(ref scope) = header.scope {
-                    if !allowed_scopes.contains(scope) {
-                        let scope_start = header.commit_type.len() + 1;
-                        all_errors.push(ParseError::new(
-                            ParseErrorKind::InvalidScope {
-                                found: scope.clone(),
-                                expected: allowed_scopes.clone(),
-                            },
-                            scope_start..scope_start + scope.len(),
-                        ));
-                    }
-                }
+            if let Some(ref allowed_scopes) = self.allowed_scopes
+                && let Some(ref scope) = header.scope
+                && !allowed_scopes.contains(scope)
+            {
+                let scope_start = header.commit_type.len() + 1;
+                all_errors.push(ParseError::new(
+                    ParseErrorKind::InvalidScope {
+                        found: scope.clone(),
+                        expected: allowed_scopes.clone(),
+                    },
+                    scope_start..scope_start + scope.len(),
+                ));
             }
         }
 
@@ -399,9 +398,11 @@ mod tests {
         let errors = result.unwrap_err();
         assert!(!errors.is_empty());
         // Check that we got an InvalidType error
-        assert!(errors
-            .iter()
-            .any(|e| matches!(&e.kind, ParseErrorKind::InvalidType { .. })));
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(&e.kind, ParseErrorKind::InvalidType { .. }))
+        );
     }
 
     #[test]
@@ -413,9 +414,11 @@ mod tests {
         let result = parser.parse("feat(core): description");
         assert!(result.is_err());
         let errors = result.unwrap_err();
-        assert!(errors
-            .iter()
-            .any(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. })));
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
+        );
     }
 
     #[test]
@@ -565,9 +568,11 @@ mod tests {
         // Should fail on invalid type
         assert!(result.is_err());
         if let Err(errors) = result.into_result() {
-            assert!(errors
-                .iter()
-                .any(|e| matches!(&e.kind, ParseErrorKind::InvalidType { .. })));
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::InvalidType { .. }))
+            );
         }
     }
 
@@ -579,9 +584,11 @@ mod tests {
         // Should fail on invalid scope
         assert!(result.is_err());
         if let Err(errors) = result.into_result() {
-            assert!(errors
-                .iter()
-                .any(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. })));
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
+            );
         }
     }
 
@@ -593,9 +600,11 @@ mod tests {
         let result = parser.parse("feat(api: description");
         assert!(result.is_err());
         if let Err(errors) = result.into_result() {
-            assert!(errors
-                .iter()
-                .any(|e| matches!(&e.kind, ParseErrorKind::MissingClosingParen)));
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::MissingClosingParen))
+            );
         }
     }
 
@@ -816,12 +825,16 @@ mod tests {
         assert!(result.is_err());
         if let Err(errors) = result.into_result() {
             // Should have error for extra spaces after colon and trailing spaces
-            assert!(errors
-                .iter()
-                .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceAfterColon)));
-            assert!(errors
-                .iter()
-                .any(|e| matches!(&e.kind, ParseErrorKind::TrailingSpaces)));
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceAfterColon))
+            );
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::TrailingSpaces))
+            );
         }
 
         // Valid commit with proper spacing
@@ -838,9 +851,11 @@ mod tests {
         let result = parser.parse("feat : description");
         assert!(result.is_err());
         if let Err(errors) = result.into_result() {
-            assert!(errors
-                .iter()
-                .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceBeforeColon)));
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceBeforeColon))
+            );
         }
     }
 
@@ -850,9 +865,11 @@ mod tests {
         let result = parser.parse("feat:  description");
         assert!(result.is_err());
         if let Err(errors) = result.into_result() {
-            assert!(errors
-                .iter()
-                .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceAfterColon)));
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceAfterColon))
+            );
         }
     }
 
@@ -862,9 +879,11 @@ mod tests {
         let result = parser.parse("feat: description ");
         assert!(result.is_err());
         if let Err(errors) = result.into_result() {
-            assert!(errors
-                .iter()
-                .any(|e| matches!(&e.kind, ParseErrorKind::TrailingSpaces)));
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::TrailingSpaces))
+            );
         }
     }
 
