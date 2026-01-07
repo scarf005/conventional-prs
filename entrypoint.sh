@@ -74,21 +74,16 @@ Your PR title must follow the [Conventional Commits](https://www.conventionalcom
       echo "✅ PR title is valid"
       
       COMMENT_MARKER="<!-- conventional-prs-title-validation -->"
-      COMMENT_BODY="${COMMENT_MARKER}
-## ✅ PR Title Validation Passed
-
-Your PR title follows the [Conventional Commits](https://www.conventionalcommits.org/) specification. Great job! 🎉"
-
-      EXISTING_COMMENT=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+      EXISTING_COMMENTS=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
         "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" | \
-        jq -r "[.[] | select(.body | contains(\"$COMMENT_MARKER\"))] | first | .id")
+        jq -r "[.[] | select(.body | contains(\"$COMMENT_MARKER\"))] | .[].id")
       
-      if [ -n "$EXISTING_COMMENT" ] && [ "$EXISTING_COMMENT" != "null" ]; then
-        curl -s -X PATCH -H "Authorization: Bearer $GITHUB_TOKEN" \
-          -H "Content-Type: application/json" \
-          "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING_COMMENT" \
-          -d "{\"body\": $(echo "$COMMENT_BODY" | jq -Rs .)}" > /dev/null
-      fi
+      while IFS= read -r COMMENT_ID; do
+        if [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
+          curl -s -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" > /dev/null
+        fi
+      done <<< "$EXISTING_COMMENTS"
     fi
   fi
   
@@ -166,21 +161,16 @@ Each commit message must follow the [Conventional Commits](https://www.conventio
       echo "✅ All commits are valid"
       
       COMMENT_MARKER="<!-- conventional-prs-commits-validation -->"
-      COMMENT_BODY="${COMMENT_MARKER}
-## ✅ Commit Validation Passed
-
-All commits follow the [Conventional Commits](https://www.conventionalcommits.org/) specification. Great job! 🎉"
-
-      EXISTING_COMMENT=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+      EXISTING_COMMENTS=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
         "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" | \
-        jq -r "[.[] | select(.body | contains(\"$COMMENT_MARKER\"))] | first | .id")
+        jq -r "[.[] | select(.body | contains(\"$COMMENT_MARKER\"))] | .[].id")
       
-      if [ -n "$EXISTING_COMMENT" ] && [ "$EXISTING_COMMENT" != "null" ]; then
-        curl -s -X PATCH -H "Authorization: Bearer $GITHUB_TOKEN" \
-          -H "Content-Type: application/json" \
-          "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING_COMMENT" \
-          -d "{\"body\": $(echo "$COMMENT_BODY" | jq -Rs .)}" > /dev/null
-      fi
+      while IFS= read -r COMMENT_ID; do
+        if [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
+          curl -s -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" > /dev/null
+        fi
+      done <<< "$EXISTING_COMMENTS"
     fi
   fi
 fi
