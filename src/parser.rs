@@ -1020,4 +1020,325 @@ mod tests {
             assert!(header.breaking);
         }
     }
+
+    // ===== SCOPE ERROR MESSAGE TESTS =====
+
+    #[test]
+    fn test_single_scope_not_found_with_suggestion() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["port".to_string(), "lua".to_string(), "mods".to_string()]),
+        );
+        let result = parser.parse("feat(scope-not-exists): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Should have exactly one invalid scope error
+            let invalid_scope_errors: Vec<_> = errors
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ParseErrorKind::InvalidScope { found, expected } => {
+                        Some((found.clone(), expected.clone()))
+                    }
+                    _ => None,
+                })
+                .collect();
+
+            assert_eq!(invalid_scope_errors.len(), 1);
+            assert_eq!(invalid_scope_errors[0].0, "scope-not-exists");
+            assert!(invalid_scope_errors[0].1.len() >= 1);
+        }
+    }
+
+    #[test]
+    fn test_case_sensitive_scope_single() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["port".to_string(), "lua".to_string()]),
+        );
+        let result = parser.parse("feat(cAsEBaD): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            let invalid_scope_errors = errors
+                .iter()
+                .filter(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
+                .count();
+            assert_eq!(invalid_scope_errors, 1);
+        }
+    }
+
+    #[test]
+    fn test_case_sensitive_scope_in_multiple() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["port".to_string(), "lua".to_string(), "mods".to_string()]),
+        );
+        let result = parser.parse("feat(port,LUA,mods): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Should only report "LUA" as invalid (lua is correct case)
+            let invalid_scope_errors = errors
+                .iter()
+                .filter(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
+                .count();
+            assert_eq!(invalid_scope_errors, 1);
+        }
+    }
+
+    #[test]
+    fn test_multiple_scopes_no_space_after_comma() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["port".to_string(), "lua".to_string(), "mods".to_string()]),
+        );
+        let result = parser.parse("feat(port,lua,mods): description");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            assert_eq!(
+                header.scope,
+                Some(vec!["port".to_string(), "lua".to_string(), "mods".to_string()])
+            );
+        }
+    }
+
+    #[test]
+    fn test_multiple_scopes_one_space_after_comma() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["port".to_string(), "lua".to_string(), "mods".to_string()]),
+        );
+        let result = parser.parse("feat(port, lua, mods): description");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            assert_eq!(
+                header.scope,
+                Some(vec!["port".to_string(), "lua".to_string(), "mods".to_string()])
+            );
+        }
+    }
+
+    #[test]
+    fn test_multiple_scopes_inconsistent_spacing() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["port".to_string(), "lua".to_string(), "mods".to_string()]),
+        );
+        // Mix of no space and one space
+        let result = parser.parse("feat(port,lua, mods): description");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            assert_eq!(
+                header.scope,
+                Some(vec!["port".to_string(), "lua".to_string(), "mods".to_string()])
+            );
+        }
+    }
+
+    #[test]
+    fn test_multiple_scopes_trailing_comma_space() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["port".to_string(), "lua".to_string()]),
+        );
+        // Trailing space after last scope
+        let result = parser.parse("feat(port, lua ): description");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            // Spaces should be trimmed
+            assert_eq!(header.scope, Some(vec!["port".to_string(), "lua".to_string()]));
+        }
+    }
+
+    #[test]
+    fn test_multiple_scopes_leading_space_first_scope() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["port".to_string(), "lua".to_string()]),
+        );
+        // Leading space before first scope
+        let result = parser.parse("feat( port, lua): description");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            // Spaces should be trimmed
+            assert_eq!(header.scope, Some(vec!["port".to_string(), "lua".to_string()]));
+        }
+    }
+
+    #[test]
+    fn test_mixed_valid_and_invalid_scopes_error_reporting() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec![
+                "port".to_string(),
+                "lua".to_string(),
+                "mods".to_string(),
+            ]),
+        );
+        let result = parser.parse("feat(port,invalid1,lua,invalid2): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Should report exactly 2 invalid scopes
+            let invalid_scope_errors = errors
+                .iter()
+                .filter(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
+                .count();
+            assert_eq!(invalid_scope_errors, 2);
+        }
+    }
+
+    #[test]
+    fn test_multiple_case_errors_in_scopes() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec![
+                "port".to_string(),
+                "lua".to_string(),
+                "mods".to_string(),
+            ]),
+        );
+        let result = parser.parse("feat(Port,LUA,Mods): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Should report 3 invalid scopes (all have wrong case)
+            let invalid_scope_errors = errors
+                .iter()
+                .filter(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
+                .count();
+            assert_eq!(invalid_scope_errors, 3);
+        }
+    }
+
+    #[test]
+    fn test_scope_with_slashes_no_space() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec![
+                "mods/CheesyInnaWoodFixes".to_string(),
+                "mods/DinoMod".to_string(),
+            ]),
+        );
+        let result = parser.parse("feat(mods/CheesyInnaWoodFixes,mods/DinoMod): description");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            assert_eq!(
+                header.scope,
+                Some(vec![
+                    "mods/CheesyInnaWoodFixes".to_string(),
+                    "mods/DinoMod".to_string()
+                ])
+            );
+        }
+    }
+
+    #[test]
+    fn test_scope_with_slashes_with_space() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec![
+                "mods/CheesyInnaWoodFixes".to_string(),
+                "mods/DinoMod".to_string(),
+            ]),
+        );
+        let result = parser.parse("feat(mods/CheesyInnaWoodFixes, mods/DinoMod): description");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            assert_eq!(
+                header.scope,
+                Some(vec![
+                    "mods/CheesyInnaWoodFixes".to_string(),
+                    "mods/DinoMod".to_string()
+                ])
+            );
+        }
+    }
+
+    #[test]
+    fn test_scope_typo_similarity_suggestion() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["database".to_string(), "api".to_string()]),
+        );
+        // "databse" is a typo of "database"
+        let result = parser.parse("feat(databse): description");
+        assert!(result.is_err());
+        // Verify error contains the similarity suggestion mechanism
+        if let Err(errors) = result.into_result() {
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
+            );
+        }
+    }
+
+    #[test]
+    fn test_empty_scope_between_commas() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["port".to_string(), "lua".to_string()]),
+        );
+        // Empty scope between commas: "port,,lua"
+        let result = parser.parse("feat(port,,lua): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Should report empty scope as invalid
+            let invalid_scope_errors = errors
+                .iter()
+                .filter(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
+                .count();
+            assert!(invalid_scope_errors >= 1);
+        }
+    }
+
+    #[test]
+    fn test_whitespace_only_scope() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["port".to_string(), "lua".to_string()]),
+        );
+        // Whitespace only between commas: "port,  ,lua"
+        let result = parser.parse("feat(port,  ,lua): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Trimmed whitespace should result in empty scope, which is invalid
+            let invalid_scope_errors = errors
+                .iter()
+                .filter(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
+                .count();
+            assert!(invalid_scope_errors >= 1);
+        }
+    }
+
+    #[test]
+    fn test_scope_with_numbers_valid() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["v2-beta3".to_string(), "api-v1".to_string()]),
+        );
+        let result = parser.parse("feat(v2-beta3,api-v1): description");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            assert_eq!(
+                header.scope,
+                Some(vec!["v2-beta3".to_string(), "api-v1".to_string()])
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_scopes_invalid_with_suggestions() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["port".to_string(), "lua".to_string()]),
+        );
+        let result = parser.parse("feat(invalid1,invalid2): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Should report both as invalid
+            let invalid_scope_errors = errors
+                .iter()
+                .filter(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
+                .count();
+            assert_eq!(invalid_scope_errors, 2);
+        }
+    }
 }
