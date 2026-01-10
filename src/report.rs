@@ -332,6 +332,16 @@ impl ErrorReporter {
                 "trailing whitespace".to_string(),
                 Some("Remove trailing spaces from the end of the commit message".to_string()),
             ),
+            ParseErrorKind::ExtraSpaceAfterOpenParen => (
+                "Extra space after opening parenthesis".to_string(),
+                "unexpected space here".to_string(),
+                Some("Remove the space immediately after '('".to_string()),
+            ),
+            ParseErrorKind::ExtraSpaceBeforeCloseParen => (
+                "Extra space before closing parenthesis".to_string(),
+                "unexpected space here".to_string(),
+                Some("Remove the space immediately before ')'".to_string()),
+            ),
         };
 
         let mut label = Label::new(("input", error.span.clone())).with_message(label_text);
@@ -517,6 +527,16 @@ impl ErrorReporter {
                 "Trailing spaces at end of commit message".to_string(),
                 "trailing whitespace".to_string(),
                 Some("Remove trailing spaces from the end of the commit message".to_string()),
+            ),
+            ParseErrorKind::ExtraSpaceAfterOpenParen => (
+                "Extra space after opening parenthesis".to_string(),
+                "unexpected space here".to_string(),
+                Some("Remove the space immediately after '('".to_string()),
+            ),
+            ParseErrorKind::ExtraSpaceBeforeCloseParen => (
+                "Extra space before closing parenthesis".to_string(),
+                "unexpected space here".to_string(),
+                Some("Remove the space immediately before ')'".to_string()),
             ),
         }
     }

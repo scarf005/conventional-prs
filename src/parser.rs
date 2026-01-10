@@ -30,6 +30,8 @@ pub enum ParseErrorKind {
     MissingColon,
     MissingSpace,
     TrailingSpaces,
+    ExtraSpaceAfterOpenParen,
+    ExtraSpaceBeforeCloseParen,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -208,6 +210,23 @@ impl ConventionalParser {
             }
 
             let scope_text: String = chars[scope_start..scope_end].iter().collect();
+
+            // Check for space immediately after opening paren
+            if !scope_text.is_empty() && scope_text.starts_with(' ') {
+                errors.push(ParseError::new(
+                    ParseErrorKind::ExtraSpaceAfterOpenParen,
+                    scope_start..scope_start + 1,
+                ));
+            }
+
+            // Check for space immediately before closing paren
+            if !scope_text.is_empty() && scope_text.ends_with(' ') {
+                let space_before_close = scope_end - 1;
+                errors.push(ParseError::new(
+                    ParseErrorKind::ExtraSpaceBeforeCloseParen,
+                    space_before_close..scope_end,
+                ));
+            }
 
             if scope_text.is_empty() {
                 errors.push(ParseError::new(
@@ -1139,12 +1158,16 @@ mod tests {
             vec!["feat".to_string()],
             Some(vec!["port".to_string(), "lua".to_string()]),
         );
-        // Trailing space after last scope
+        // Trailing space after last scope - should be error
         let result = parser.parse("feat(port, lua ): description");
-        assert!(result.is_ok());
-        if let Ok(header) = result.into_result() {
-            // Spaces should be trimmed
-            assert_eq!(header.scope, Some(vec!["port".to_string(), "lua".to_string()]));
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Should report space before closing paren
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceBeforeCloseParen))
+            );
         }
     }
 
@@ -1154,12 +1177,16 @@ mod tests {
             vec!["feat".to_string()],
             Some(vec!["port".to_string(), "lua".to_string()]),
         );
-        // Leading space before first scope
+        // Leading space before first scope - should be error
         let result = parser.parse("feat( port, lua): description");
-        assert!(result.is_ok());
-        if let Ok(header) = result.into_result() {
-            // Spaces should be trimmed
-            assert_eq!(header.scope, Some(vec!["port".to_string(), "lua".to_string()]));
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Should report space after opening paren
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceAfterOpenParen))
+            );
         }
     }
 
@@ -1339,6 +1366,143 @@ mod tests {
                 .filter(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
                 .count();
             assert_eq!(invalid_scope_errors, 2);
+        }
+    }
+
+    // ===== SCOPE PARENTHESIS SPACING TESTS =====
+
+    #[test]
+    fn test_space_after_opening_paren() {
+        let parser = default_parser();
+        let result = parser.parse("feat( port): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceAfterOpenParen))
+            );
+        }
+    }
+
+    #[test]
+    fn test_space_before_closing_paren() {
+        let parser = default_parser();
+        let result = parser.parse("feat(port ): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceBeforeCloseParen))
+            );
+        }
+    }
+
+    #[test]
+    fn test_spaces_both_sides_of_scope() {
+        let parser = default_parser();
+        let result = parser.parse("feat( port ): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Should report both errors
+            let space_errors = errors
+                .iter()
+                .filter(|e| {
+                    matches!(
+                        &e.kind,
+                        ParseErrorKind::ExtraSpaceAfterOpenParen
+                            | ParseErrorKind::ExtraSpaceBeforeCloseParen
+                    )
+                })
+                .count();
+            assert_eq!(space_errors, 2);
+        }
+    }
+
+    #[test]
+    fn test_space_after_paren_multiple_scopes() {
+        let parser = default_parser();
+        let result = parser.parse("feat( port, lua): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceAfterOpenParen))
+            );
+        }
+    }
+
+    #[test]
+    fn test_space_before_paren_multiple_scopes() {
+        let parser = default_parser();
+        let result = parser.parse("feat(port, lua ): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceBeforeCloseParen))
+            );
+        }
+    }
+
+    #[test]
+    fn test_multiple_spaces_after_opening_paren() {
+        let parser = default_parser();
+        let result = parser.parse("feat(  port): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // First space should be flagged
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceAfterOpenParen))
+            );
+        }
+    }
+
+    #[test]
+    fn test_multiple_spaces_before_closing_paren() {
+        let parser = default_parser();
+        let result = parser.parse("feat(port  ): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Space before closing paren should be flagged
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::ExtraSpaceBeforeCloseParen))
+            );
+        }
+    }
+
+    #[test]
+    fn test_correct_multi_scope_formatting() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["port".to_string(), "lua".to_string()]),
+        );
+        // Correct formatting: no spaces after ( or before )
+        let result = parser.parse("feat(port, lua): description");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            assert_eq!(header.scope, Some(vec!["port".to_string(), "lua".to_string()]));
+        }
+    }
+
+    #[test]
+    fn test_correct_single_scope_no_spaces() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["api".to_string()]),
+        );
+        // Correct single scope
+        let result = parser.parse("feat(api): description");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            assert_eq!(header.scope, Some(vec!["api".to_string()]));
         }
     }
 }
