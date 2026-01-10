@@ -3,7 +3,7 @@
 #[derive(Debug, Clone, PartialEq)]
 pub struct CommitHeader {
     pub commit_type: String,
-    pub scope: Option<String>,
+    pub scope: Option<Vec<String>>,
     pub breaking: bool,
     pub description: String,
 }
@@ -138,17 +138,22 @@ impl ConventionalParser {
             }
 
             if let Some(ref allowed_scopes) = self.allowed_scopes
-                && let Some(ref scope) = header.scope
-                && !allowed_scopes.contains(scope)
+                && let Some(ref scopes) = header.scope
             {
-                let scope_start = header.commit_type.len() + 1;
-                all_errors.push(ParseError::new(
-                    ParseErrorKind::InvalidScope {
-                        found: scope.clone(),
-                        expected: allowed_scopes.clone(),
-                    },
-                    scope_start..scope_start + scope.len(),
-                ));
+                // Validate each scope individually
+                let mut scope_pos = header.commit_type.len() + 2; // +2 for '(' and initial offset
+                for (i, individual_scope) in scopes.iter().enumerate() {
+                    if !allowed_scopes.contains(individual_scope) {
+                        all_errors.push(ParseError::new(
+                            ParseErrorKind::InvalidScope {
+                                found: individual_scope.clone(),
+                                expected: allowed_scopes.clone(),
+                            },
+                            scope_pos..scope_pos + individual_scope.len(),
+                        ));
+                    }
+                    scope_pos += individual_scope.len() + if i < scopes.len() - 1 { 2 } else { 0 }; // +2 for ', '
+                }
             }
         }
 
@@ -210,7 +215,12 @@ impl ConventionalParser {
                     paren_pos..scope_end + if found_closing { 1 } else { 0 },
                 ));
             } else {
-                scope = Some(scope_text);
+                // Split scope by comma and trim each one
+                let scopes: Vec<String> = scope_text
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .collect();
+                scope = Some(scopes);
             }
 
             if found_closing {
@@ -364,7 +374,7 @@ mod tests {
         assert!(result.is_ok());
         let header = result.unwrap();
         assert_eq!(header.commit_type, "fix");
-        assert_eq!(header.scope, Some("api".to_string()));
+        assert_eq!(header.scope, Some(vec!["api".to_string()]));
         assert_eq!(header.breaking, false);
         assert_eq!(header.description, "resolve bug");
     }
@@ -386,7 +396,7 @@ mod tests {
         assert!(result.is_ok());
         let header = result.unwrap();
         assert_eq!(header.commit_type, "feat");
-        assert_eq!(header.scope, Some("core".to_string()));
+        assert_eq!(header.scope, Some(vec!["core".to_string()]));
         assert_eq!(header.breaking, true);
     }
 
@@ -447,7 +457,7 @@ mod tests {
         let result = parser.parse("feat(my-scope): description");
         assert!(result.is_ok());
         let header = result.unwrap();
-        assert_eq!(header.scope, Some("my-scope".to_string()));
+        assert_eq!(header.scope, Some(vec!["my-scope".to_string()]));
     }
 
     #[test]
@@ -495,7 +505,7 @@ mod tests {
         let result = parser.parse("feat(api/v2): description");
         assert!(result.is_ok());
         if let Ok(header) = result.into_result() {
-            assert_eq!(header.scope, Some("api/v2".to_string()));
+            assert_eq!(header.scope, Some(vec!["api/v2".to_string()]));
         }
     }
 
@@ -505,7 +515,7 @@ mod tests {
         let result = parser.parse("feat(my scope): description");
         assert!(result.is_ok());
         if let Ok(header) = result.into_result() {
-            assert_eq!(header.scope, Some("my scope".to_string()));
+            assert_eq!(header.scope, Some(vec!["my scope".to_string()]));
         }
     }
 
@@ -516,7 +526,7 @@ mod tests {
         assert!(result.is_ok());
         if let Ok(header) = result.into_result() {
             assert_eq!(header.commit_type, "feat");
-            assert_eq!(header.scope, Some("api".to_string()));
+            assert_eq!(header.scope, Some(vec!["api".to_string()]));
             assert!(header.breaking);
             assert_eq!(header.description, "major change");
         }
@@ -556,7 +566,7 @@ mod tests {
         let result = parser.parse("feat(api-v2-beta3): description");
         assert!(result.is_ok());
         if let Ok(header) = result.into_result() {
-            assert_eq!(header.scope, Some("api-v2-beta3".to_string()));
+            assert_eq!(header.scope, Some(vec!["api-v2-beta3".to_string()]));
         }
     }
 
@@ -663,7 +673,7 @@ mod tests {
         let result = parser.parse("feat(api core): description");
         assert!(result.is_ok());
         if let Ok(header) = result.into_result() {
-            assert_eq!(header.scope, Some("api core".to_string()));
+            assert_eq!(header.scope, Some(vec!["api core".to_string()]));
         }
     }
 
@@ -742,7 +752,7 @@ mod tests {
         let result = parser.parse("feat(апі): description");
         assert!(result.is_ok());
         if let Ok(header) = result.into_result() {
-            assert_eq!(header.scope, Some("апі".to_string()));
+            assert_eq!(header.scope, Some(vec!["апі".to_string()]));
         }
     }
 
@@ -774,7 +784,7 @@ mod tests {
         let result = parser.parse("feat(api_v2): description");
         assert!(result.is_ok());
         if let Ok(header) = result.into_result() {
-            assert_eq!(header.scope, Some("api_v2".to_string()));
+            assert_eq!(header.scope, Some(vec!["api_v2".to_string()]));
         }
     }
 
@@ -784,7 +794,7 @@ mod tests {
         let result = parser.parse("feat(api.v2): description");
         assert!(result.is_ok());
         if let Ok(header) = result.into_result() {
-            assert_eq!(header.scope, Some("api.v2".to_string()));
+            assert_eq!(header.scope, Some(vec!["api.v2".to_string()]));
         }
     }
 
@@ -895,6 +905,119 @@ mod tests {
         if let Err(errors) = result.into_result() {
             // Should catch space before colon, extra spaces after, and trailing
             assert!(errors.len() >= 2);
+        }
+    }
+
+    // ===== MULTIPLE SCOPES TESTS =====
+
+    #[test]
+    fn test_multiple_scopes_all_valid() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec![
+                "lua".to_string(),
+                "mods".to_string(),
+                "port".to_string(),
+            ]),
+        );
+        let result = parser.parse("feat(lua,mods,port): nyctophobia trait");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            assert_eq!(
+                header.scope,
+                Some(vec![
+                    "lua".to_string(),
+                    "mods".to_string(),
+                    "port".to_string()
+                ])
+            );
+        }
+    }
+
+    #[test]
+    fn test_multiple_scopes_with_spaces() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec![
+                "lua".to_string(),
+                "mods".to_string(),
+                "port".to_string(),
+            ]),
+        );
+        let result = parser.parse("feat(lua, mods, port): nyctophobia trait");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            assert_eq!(
+                header.scope,
+                Some(vec![
+                    "lua".to_string(),
+                    "mods".to_string(),
+                    "port".to_string()
+                ])
+            );
+        }
+    }
+
+    #[test]
+    fn test_multiple_scopes_partial_invalid() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["lua".to_string(), "mods".to_string()]),
+        );
+        let result = parser.parse("feat(lua,mods,invalid): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Should report the invalid scope
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
+            );
+        }
+    }
+
+    #[test]
+    fn test_multiple_scopes_all_invalid() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["valid1".to_string(), "valid2".to_string()]),
+        );
+        let result = parser.parse("feat(invalid1,invalid2): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            // Should report multiple invalid scope errors
+            let invalid_scope_errors = errors
+                .iter()
+                .filter(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
+                .count();
+            assert_eq!(invalid_scope_errors, 2);
+        }
+    }
+
+    #[test]
+    fn test_single_scope_still_works() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["api".to_string()]),
+        );
+        let result = parser.parse("feat(api): description");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            assert_eq!(header.scope, Some(vec!["api".to_string()]));
+        }
+    }
+
+    #[test]
+    fn test_multiple_scopes_with_breaking_change() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string()],
+            Some(vec!["ui".to_string(), "api".to_string()]),
+        );
+        let result = parser.parse("feat(ui,api)!: breaking change");
+        assert!(result.is_ok());
+        if let Ok(header) = result.into_result() {
+            assert_eq!(header.scope, Some(vec!["ui".to_string(), "api".to_string()]));
+            assert!(header.breaking);
         }
     }
 }

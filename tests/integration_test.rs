@@ -72,7 +72,7 @@ fn test_end_to_end_breaking_changes() {
     assert!(result.is_ok());
     if let Some(header) = result.output() {
         assert!(header.breaking);
-        assert_eq!(header.scope, Some("api".to_string()));
+        assert_eq!(header.scope, Some(vec!["api".to_string()]));
     }
 }
 
