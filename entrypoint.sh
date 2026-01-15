@@ -1,37 +1,43 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+IFS=$'\n\t'
 
-if [ "$GITHUB_EVENT_NAME" != "pull_request" ] && [ "$GITHUB_EVENT_NAME" != "pull_request_target" ]; then
+if [ "${GITHUB_EVENT_NAME:-}" != "pull_request" ] && [ "${GITHUB_EVENT_NAME:-}" != "pull_request_target" ]; then
   echo "This action only runs on pull_request or pull_request_target events"
   exit 0
 fi
 
-PR_NUMBER=$(jq -r .pull_request.number "$GITHUB_EVENT_PATH")
-PR_TITLE=$(jq -r .pull_request.title "$GITHUB_EVENT_PATH")
+PR_NUMBER=$(jq -r .pull_request.number "${GITHUB_EVENT_PATH:?}")
+PR_TITLE=$(jq -r .pull_request.title "${GITHUB_EVENT_PATH:?}")
+
+if [[ ! "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+  echo "Invalid PR number: $PR_NUMBER" >&2
+  exit 1
+fi
 
 echo "Validating PR #$PR_NUMBER: $PR_TITLE"
 
 CONFIG_FILE=""
 for ext in yml yaml json jsonc toml; do
-  RESPONSE=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+  RESPONSE=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN:?}" \
     -H "Accept: application/vnd.github.v3.raw" \
-    "https://api.github.com/repos/$GITHUB_REPOSITORY/contents/.github/semantic.$ext" 2>/dev/null || echo "")
-  
+    "https://api.github.com/repos/${GITHUB_REPOSITORY:?}/contents/.github/semantic.$ext" 2>/dev/null || true)
+
   if [ -n "$RESPONSE" ] && [ "$RESPONSE" != "404: Not Found" ]; then
     CONFIG_FILE="/tmp/semantic.$ext"
-    echo "$RESPONSE" > "$CONFIG_FILE"
+    printf '%s' "$RESPONSE" > "$CONFIG_FILE"
     echo "Found config: .github/semantic.$ext"
     break
   fi
 done
 
-CONFIG_FLAG=""
+ARGS=(--input "$PR_TITLE" --format github)
 if [ -n "$CONFIG_FILE" ]; then
-  CONFIG_FLAG="--config $CONFIG_FILE"
+  ARGS+=(--config "$CONFIG_FILE")
 fi
 
 set +e
-OUTPUT=$(conventional-prs --input "$PR_TITLE" --format github $CONFIG_FLAG 2>&1)
+OUTPUT=$(conventional-prs "${ARGS[@]}" 2>&1)
 EXIT_CODE=$?
 set -e
 

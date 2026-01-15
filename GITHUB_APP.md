@@ -11,6 +11,7 @@ name: Validate PR
 
 on:
   # Use pull_request_target so the action can post PR comments on fork PRs.
+  # Security note: do not check out or execute untrusted PR code in the same job when using pull_request_target.
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
 
