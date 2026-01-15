@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
-  echo "This action only runs on pull_request events"
+if [ "$GITHUB_EVENT_NAME" != "pull_request" ] && [ "$GITHUB_EVENT_NAME" != "pull_request_target" ]; then
+  echo "This action only runs on pull_request or pull_request_target events"
   exit 0
 fi
 

@@ -9,7 +9,8 @@ Add to `.github/workflows/pr-validation.yml`:
 ```yaml
 name: PR Validation
 on:
-  pull_request:
+  # Use pull_request_target so the action can post PR comments on fork PRs.
+  pull_request_target:
     types: [opened, edited, synchronize, reopened]
 
 jobs:

@@ -10,7 +10,8 @@ Add this workflow to `.github/workflows/pr-validation.yml` in your repository:
 name: Validate PR
 
 on:
-  pull_request:
+  # Use pull_request_target so the action can post PR comments on fork PRs.
+  pull_request_target:
     types: [opened, edited, synchronize, reopened]
 
 jobs:
