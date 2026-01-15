@@ -118,10 +118,43 @@ impl ConventionalParser {
         }
     }
 
+    fn strip_git_autosquash_prefixes(input: &str) -> (&str, usize) {
+        let mut s = input;
+        let mut offset = 0;
+
+        loop {
+            let (prefix_len, rest) = if let Some(rest) = s.strip_prefix("fixup!") {
+                ("fixup!".len(), rest)
+            } else if let Some(rest) = s.strip_prefix("squash!") {
+                ("squash!".len(), rest)
+            } else {
+                break;
+            };
+
+            offset += prefix_len;
+
+            let trimmed = rest.trim_start_matches(|c: char| c.is_whitespace());
+            offset += rest.len() - trimmed.len();
+            s = trimmed;
+        }
+
+        (s, offset)
+    }
+
     /// Parse a conventional commit header with fault tolerance.
     /// Returns a ParseResult that bundles input with output/errors.
     pub fn parse<'a>(&self, input: &'a str) -> ParseResult<'a> {
-        let result = self.parse_internal(input);
+        let (effective_input, offset) = Self::strip_git_autosquash_prefixes(input);
+        let mut result = self.parse_internal(effective_input);
+
+        if offset != 0 {
+            if let Err(ref mut errors) = result {
+                for error in errors {
+                    error.span = (error.span.start + offset)..(error.span.end + offset);
+                }
+            }
+        }
+
         ParseResult::new(input, result)
     }
 
@@ -384,6 +417,38 @@ mod tests {
         assert_eq!(header.scope, None);
         assert_eq!(header.breaking, false);
         assert_eq!(header.description, "add new feature");
+    }
+
+    #[test]
+    fn test_fixup_prefix_is_ignored() {
+        let parser = default_parser();
+        let result = parser.parse("fixup! feat: add new feature");
+        assert!(result.is_ok());
+        let header = result.unwrap();
+        assert_eq!(header.commit_type, "feat");
+    }
+
+    #[test]
+    fn test_squash_prefix_is_ignored() {
+        let parser = default_parser();
+        let result = parser.parse("squash! fix(api): resolve bug");
+        assert!(result.is_ok());
+        let header = result.unwrap();
+        assert_eq!(header.commit_type, "fix");
+        assert_eq!(header.scope, Some(vec!["api".to_string()]));
+    }
+
+    #[test]
+    fn test_fixup_prefix_error_spans_are_offset() {
+        let parser = default_parser();
+        let result = parser.parse("fixup! fature: typo in type");
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        let invalid_type = errors
+            .iter()
+            .find(|e| matches!(&e.kind, ParseErrorKind::InvalidType { .. }))
+            .expect("expected invalid type error");
+        assert_eq!(invalid_type.span, 7..13);
     }
 
     #[test]

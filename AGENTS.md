@@ -11,6 +11,7 @@
   - DO NOT rebuild from source on every PR
   - Only build container on main branch pushes
 - **MUST** commit after implementing a subtask
+- **MUST** use TDD (write the failing test first, then implement)
 - **MUST** write tests (Unit tests for parser recovery are mandatory)
 - **MUST NOT** reinvent wheel: Use existing crates from crates.io instead of implementing common algorithms (e.g., use `strsim` for string similarity, not manual Levenshtein)
 - **MUST USE** named format parameters in macros like `format!`, `println!`, etc.
