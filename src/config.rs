@@ -1,3 +1,4 @@
+use ariadne::CharSet;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -47,6 +48,25 @@ pub struct Config {
 
     #[serde(default = "default_target_url")]
     pub target_url: String,
+
+    #[serde(default = "default_charset", skip_serializing)]
+    pub charset: CharSetConfig,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CharSetConfig {
+    Ascii,
+    Unicode,
+}
+
+impl From<CharSetConfig> for CharSet {
+    fn from(config: CharSetConfig) -> Self {
+        match config {
+            CharSetConfig::Ascii => CharSet::Ascii,
+            CharSetConfig::Unicode => CharSet::Unicode,
+        }
+    }
 }
 
 fn default_true() -> bool {
@@ -73,6 +93,10 @@ fn default_target_url() -> String {
     "https://github.com/Ezard/semantic-prs".to_string()
 }
 
+fn default_charset() -> CharSetConfig {
+    CharSetConfig::Ascii
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -86,6 +110,7 @@ impl Default for Config {
             allow_merge_commits: false,
             allow_revert_commits: false,
             target_url: default_target_url(),
+            charset: default_charset(),
         }
     }
 }

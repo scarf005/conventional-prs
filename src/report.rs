@@ -1,5 +1,6 @@
+use crate::config::CharSetConfig;
 use crate::parser::{ParseError, ParseErrorKind};
-use ariadne::{ColorGenerator, Label, Report, ReportKind, Source};
+use ariadne::{CharSet, ColorGenerator, Label, Report, ReportKind, Source};
 use strsim::jaro_winkler;
 
 /// Find the most similar string from a list using Jaro-Winkler similarity
@@ -20,11 +21,12 @@ pub enum OutputFormat {
 
 pub struct ErrorReporter {
     format: OutputFormat,
+    charset: CharSetConfig,
 }
 
 impl ErrorReporter {
-    pub fn new(format: OutputFormat) -> Self {
-        Self { format }
+    pub fn new(format: OutputFormat, charset: CharSetConfig) -> Self {
+        Self { format, charset }
     }
 
     /// Generate error report and return it as a String
@@ -61,15 +63,17 @@ impl ErrorReporter {
 
     /// Customize underline characters to distinguish ranges from single points
     fn customize_underlines(&self, output: String, _errors: &[ParseError]) -> String {
+        if self.charset == CharSetConfig::Ascii {
+            return output;
+        }
+
         let lines: Vec<&str> = output.lines().collect();
         let mut result_lines = Vec::new();
 
         for line in &lines {
-            // Strip ANSI codes to check for underline characters
             let stripped = Self::strip_ansi(line);
 
             if stripped.contains('┬') || stripped.contains('─') {
-                // Customize while preserving ANSI codes
                 let customized = self.customize_with_ansi_preserved(line, &stripped);
                 result_lines.push(customized);
             } else {
@@ -205,19 +209,22 @@ impl ErrorReporter {
     /// Replace spaces in error spans with visible character
     fn visualize_spacing_errors(&self, input: &str, errors: &[ParseError]) -> String {
         let mut chars: Vec<char> = input.chars().collect();
+        let space_char = if self.charset == CharSetConfig::Ascii {
+            '_'
+        } else {
+            '␣'
+        };
 
         for error in errors {
-            // Only visualize spacing-related errors
             if matches!(
                 error.kind,
                 ParseErrorKind::ExtraSpaceBeforeColon
                     | ParseErrorKind::ExtraSpaceAfterColon
                     | ParseErrorKind::TrailingSpaces
             ) {
-                // Replace spaces in the error span with ▨
                 for i in error.span.clone() {
                     if i < chars.len() && chars[i] == ' ' {
-                        chars[i] = '␣'; // Visible space character
+                        chars[i] = space_char;
                     }
                 }
             }
@@ -231,7 +238,6 @@ impl ErrorReporter {
         error: &ParseError,
     ) -> Report<'static, (&'static str, std::ops::Range<usize>)> {
         let mut colors = ColorGenerator::new();
-        // Don't use colors for GitHub format
         let error_color = if self.format == OutputFormat::Ascii {
             None
         } else {
@@ -358,10 +364,15 @@ impl ErrorReporter {
             report_builder = report_builder.with_help(help);
         }
 
-        // Apply color configuration based on format
         if self.format == OutputFormat::Ascii {
-            report_builder =
-                report_builder.with_config(ariadne::Config::default().with_color(false));
+            report_builder = report_builder.with_config(
+                ariadne::Config::default()
+                    .with_color(false)
+                    .with_char_set(CharSet::from(self.charset)),
+            );
+        } else {
+            report_builder = report_builder
+                .with_config(ariadne::Config::default().with_char_set(CharSet::from(self.charset)));
         }
 
         report_builder.finish()
@@ -417,16 +428,20 @@ impl ErrorReporter {
 
             report_builder = report_builder.with_label(label);
 
-            // Add help text (ariadne will number them automatically)
             if let Some(help) = help_text {
                 report_builder = report_builder.with_help(help);
             }
         }
 
-        // Apply color configuration based on format
         if self.format == OutputFormat::Ascii {
-            report_builder =
-                report_builder.with_config(ariadne::Config::default().with_color(false));
+            report_builder = report_builder.with_config(
+                ariadne::Config::default()
+                    .with_color(false)
+                    .with_char_set(CharSet::from(self.charset)),
+            );
+        } else {
+            report_builder = report_builder
+                .with_config(ariadne::Config::default().with_char_set(CharSet::from(self.charset)));
         }
 
         report_builder.finish()
@@ -562,7 +577,7 @@ mod tests {
 
     #[test]
     fn test_report_invalid_type() {
-        let reporter = ErrorReporter::new(OutputFormat::Color);
+        let reporter = ErrorReporter::new(OutputFormat::Color, CharSetConfig::Unicode);
         let error = ParseError::new(
             ParseErrorKind::InvalidType {
                 found: "fature".to_string(),
@@ -580,7 +595,7 @@ mod tests {
 
     #[test]
     fn test_report_invalid_scope() {
-        let reporter = ErrorReporter::new(OutputFormat::Color);
+        let reporter = ErrorReporter::new(OutputFormat::Color, CharSetConfig::Unicode);
         let error = ParseError::new(
             ParseErrorKind::InvalidScope {
                 found: "wrong".to_string(),
@@ -598,14 +613,56 @@ mod tests {
 
     #[test]
     fn test_github_format_no_colors() {
-        let reporter = ErrorReporter::new(OutputFormat::Ascii);
+        let reporter = ErrorReporter::new(OutputFormat::Ascii, CharSetConfig::Ascii);
         let error = ParseError::new(ParseErrorKind::MissingSeparator, 4..4);
 
         let input = "feat description";
         let report = reporter.report_errors(input, &[error]);
 
-        // GitHub format should not contain ANSI escape codes
         assert!(!report.contains("\x1b["));
         assert!(report.contains("Missing separator"));
+    }
+
+    #[test]
+    fn test_ascii_charset_uses_ascii_chars() {
+        let reporter = ErrorReporter::new(OutputFormat::Ascii, CharSetConfig::Ascii);
+        let error = ParseError::new(ParseErrorKind::MissingSeparator, 4..4);
+        let input = "feat description";
+        let report = reporter.report_errors(input, &[error]);
+
+        assert!(!report.contains("─"));
+        assert!(!report.contains("│"));
+        assert!(!report.contains("╭"));
+        assert!(report.contains("|") || report.contains("-"));
+    }
+
+    #[test]
+    fn test_unicode_charset_uses_unicode_chars() {
+        let reporter = ErrorReporter::new(OutputFormat::Ascii, CharSetConfig::Unicode);
+        let error = ParseError::new(ParseErrorKind::MissingSeparator, 4..4);
+        let input = "feat description";
+        let report = reporter.report_errors(input, &[error]);
+
+        assert!(report.contains("─") || report.contains("│"));
+    }
+
+    #[test]
+    fn test_ascii_charset_uses_underscore_for_spaces() {
+        let reporter = ErrorReporter::new(OutputFormat::Ascii, CharSetConfig::Ascii);
+        let error = ParseError::new(ParseErrorKind::TrailingSpaces, 4..6);
+        let input = "feat  ";
+        let report = reporter.report_errors(input, &[error]);
+
+        assert!(report.contains("feat__"));
+    }
+
+    #[test]
+    fn test_unicode_charset_uses_visible_space_char() {
+        let reporter = ErrorReporter::new(OutputFormat::Ascii, CharSetConfig::Unicode);
+        let error = ParseError::new(ParseErrorKind::TrailingSpaces, 4..6);
+        let input = "feat  ";
+        let report = reporter.report_errors(input, &[error]);
+
+        assert!(report.contains("feat␣␣"));
     }
 }

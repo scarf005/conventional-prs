@@ -1,4 +1,4 @@
-use conventional_prs::{Config, ConventionalParser, ErrorReporter, OutputFormat};
+use conventional_prs::{CharSetConfig, Config, ConventionalParser, ErrorReporter, OutputFormat};
 use std::path::PathBuf;
 
 #[test]
@@ -23,7 +23,7 @@ fn test_end_to_end_invalid_commit() {
 fn test_end_to_end_error_reporting() {
     let config = Config::default();
     let parser = ConventionalParser::new(config.types, config.scopes);
-    let reporter = ErrorReporter::new(OutputFormat::Ascii);
+    let reporter = ErrorReporter::new(OutputFormat::Ascii, CharSetConfig::Ascii);
 
     let input = "fature: typo";
     let result = parser.parse(input);
@@ -127,13 +127,10 @@ fn test_reporter_formats() {
     let input = "wrongtype: desc";
     let result = parser.parse(input);
     if let Some(errors) = result.errors() {
-        // Test default format (with colors)
-        let reporter_default = ErrorReporter::new(OutputFormat::Color);
+        let reporter_default = ErrorReporter::new(OutputFormat::Color, CharSetConfig::Unicode);
         let report_default = reporter_default.report_errors(input, errors);
-        // Default format may have colors (ANSI codes)
 
-        // Test GitHub format (no colors)
-        let reporter_github = ErrorReporter::new(OutputFormat::Ascii);
+        let reporter_github = ErrorReporter::new(OutputFormat::Ascii, CharSetConfig::Ascii);
         let report_github = reporter_github.report_errors(input, errors);
         assert!(!report_github.contains("\x1b["));
 

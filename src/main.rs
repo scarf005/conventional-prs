@@ -1,5 +1,5 @@
 use clap::Parser;
-use conventional_prs::{Config, ConventionalParser, OutputFormat};
+use conventional_prs::{CharSetConfig, Config, ConventionalParser, OutputFormat};
 use std::io::{self, Read};
 use std::path::PathBuf;
 use std::process;
@@ -22,6 +22,10 @@ struct Cli {
     /// Output format (default or github)
     #[arg(long, value_enum, default_value = "default")]
     format: Format,
+
+    /// Character set for error rendering (ascii or unicode)
+    #[arg(long, value_enum)]
+    charset: Option<CharSet>,
 }
 
 #[derive(Debug, Clone, clap::ValueEnum)]
@@ -29,6 +33,12 @@ enum Format {
     Default,
     #[value(name = "github")]
     GitHub,
+}
+
+#[derive(Debug, Clone, clap::ValueEnum)]
+enum CharSet {
+    Ascii,
+    Unicode,
 }
 
 impl From<Format> for OutputFormat {
@@ -40,31 +50,41 @@ impl From<Format> for OutputFormat {
     }
 }
 
+impl From<CharSet> for CharSetConfig {
+    fn from(c: CharSet) -> Self {
+        match c {
+            CharSet::Ascii => CharSetConfig::Ascii,
+            CharSet::Unicode => CharSetConfig::Unicode,
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
-    // Load configuration
-    let config = match Config::load(cli.config.as_deref()) {
+    let mut config = match Config::load(cli.config.as_deref()) {
         Ok(cfg) => cfg,
         Err(e) => {
-            eprintln!("Error loading configuration: {}", e);
+            eprintln!("Error loading configuration: {e}");
             process::exit(1);
         }
     };
 
-    // Check if validation is enabled
+    if let Some(charset) = cli.charset {
+        config.charset = CharSetConfig::from(charset);
+    }
+
     if !config.enabled {
         eprintln!("Validation is disabled in configuration");
         process::exit(0);
     }
 
-    // Get input from CLI arg or stdin
     let input = match cli.input {
         Some(text) => text,
         None => {
             let mut buffer = String::new();
             if let Err(e) = io::stdin().read_to_string(&mut buffer) {
-                eprintln!("Error reading from stdin: {}", e);
+                eprintln!("Error reading from stdin: {e}");
                 process::exit(1);
             }
             buffer.trim().to_string()
@@ -84,7 +104,7 @@ fn main() {
         }
         process::exit(0);
     } else {
-        result.print_errors(output_format);
+        result.print_errors(output_format, config.charset);
         process::exit(1);
     }
 }

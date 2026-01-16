@@ -90,16 +90,24 @@ impl<'a> ParseResult<'a> {
         self.result.unwrap_err()
     }
 
-    pub fn report(&self, format: crate::report::OutputFormat) -> Option<String> {
+    pub fn report(
+        &self,
+        format: crate::report::OutputFormat,
+        charset: crate::config::CharSetConfig,
+    ) -> Option<String> {
         self.errors().map(|errors| {
-            let reporter = crate::report::ErrorReporter::new(format);
+            let reporter = crate::report::ErrorReporter::new(format, charset);
             reporter.report_errors(self.input, errors)
         })
     }
 
-    pub fn print_errors(&self, format: crate::report::OutputFormat) {
+    pub fn print_errors(
+        &self,
+        format: crate::report::OutputFormat,
+        charset: crate::config::CharSetConfig,
+    ) {
         if let Some(errors) = self.errors() {
-            let reporter = crate::report::ErrorReporter::new(format);
+            let reporter = crate::report::ErrorReporter::new(format, charset);
             eprint!("{}", reporter.report_errors(self.input, errors));
         }
     }
