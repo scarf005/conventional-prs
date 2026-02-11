@@ -18,6 +18,11 @@ pub enum ParseErrorKind {
         found: String,
         expected: Vec<String>,
     },
+    TypeUsedAsScope {
+        found: String,
+        expected_scopes: Vec<String>,
+        available_types: Vec<String>,
+    },
     MissingClosingParen,
     MissingSeparator,
     MissingDescription,
@@ -187,13 +192,25 @@ impl ConventionalParser {
                 let mut scope_pos = header.commit_type.len() + 2; // +2 for '(' and initial offset
                 for (i, individual_scope) in scopes.iter().enumerate() {
                     if !allowed_scopes.contains(individual_scope) {
-                        all_errors.push(ParseError::new(
-                            ParseErrorKind::InvalidScope {
-                                found: individual_scope.clone(),
-                                expected: allowed_scopes.clone(),
-                            },
-                            scope_pos..scope_pos + individual_scope.len(),
-                        ));
+                        // Check if this invalid scope is actually a valid type being misused
+                        if self.allowed_types.contains(individual_scope) {
+                            all_errors.push(ParseError::new(
+                                ParseErrorKind::TypeUsedAsScope {
+                                    found: individual_scope.clone(),
+                                    expected_scopes: allowed_scopes.clone(),
+                                    available_types: self.allowed_types.clone(),
+                                },
+                                scope_pos..scope_pos + individual_scope.len(),
+                            ));
+                        } else {
+                            all_errors.push(ParseError::new(
+                                ParseErrorKind::InvalidScope {
+                                    found: individual_scope.clone(),
+                                    expected: allowed_scopes.clone(),
+                                },
+                                scope_pos..scope_pos + individual_scope.len(),
+                            ));
+                        }
                     }
                     scope_pos += individual_scope.len() + if i < scopes.len() - 1 { 2 } else { 0 }; // +2 for ', '
                 }
@@ -1438,6 +1455,111 @@ mod tests {
                 .filter(|e| matches!(&e.kind, ParseErrorKind::InvalidScope { .. }))
                 .count();
             assert!(invalid_scope_errors >= 1);
+        }
+    }
+
+    #[test]
+    fn test_type_used_as_scope() {
+        let parser = ConventionalParser::new(
+            vec![
+                "feat".to_string(),
+                "fix".to_string(),
+                "refactor".to_string(),
+                "build".to_string(),
+            ],
+            Some(vec!["api".to_string(), "ui".to_string()]),
+        );
+        let result = parser.parse("refactor(build): simplify data install");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            let type_as_scope_errors: Vec<_> = errors
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ParseErrorKind::TypeUsedAsScope { found, .. } => Some(found.clone()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(type_as_scope_errors.len(), 1);
+            assert_eq!(type_as_scope_errors[0], "build");
+        }
+    }
+
+    #[test]
+    fn test_multiple_scopes_one_is_type() {
+        let parser = ConventionalParser::new(
+            vec![
+                "feat".to_string(),
+                "fix".to_string(),
+                "build".to_string(),
+            ],
+            Some(vec!["api".to_string(), "ui".to_string()]),
+        );
+        let result = parser.parse("feat(api, build, ui): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            let type_as_scope_errors: Vec<_> = errors
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ParseErrorKind::TypeUsedAsScope { found, .. } => Some(found.clone()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(type_as_scope_errors.len(), 1);
+            assert_eq!(type_as_scope_errors[0], "build");
+        }
+    }
+
+    #[test]
+    fn test_all_scopes_are_types() {
+        let parser = ConventionalParser::new(
+            vec![
+                "feat".to_string(),
+                "fix".to_string(),
+                "build".to_string(),
+                "ci".to_string(),
+            ],
+            Some(vec!["api".to_string(), "ui".to_string()]),
+        );
+        let result = parser.parse("feat(build, ci): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            let type_as_scope_errors: Vec<_> = errors
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ParseErrorKind::TypeUsedAsScope { found, .. } => Some(found.clone()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(type_as_scope_errors.len(), 2);
+            assert!(type_as_scope_errors.contains(&"build".to_string()));
+            assert!(type_as_scope_errors.contains(&"ci".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_regular_invalid_scope_not_a_type() {
+        let parser = ConventionalParser::new(
+            vec!["feat".to_string(), "fix".to_string()],
+            Some(vec!["api".to_string(), "ui".to_string()]),
+        );
+        let result = parser.parse("feat(database): description");
+        assert!(result.is_err());
+        if let Err(errors) = result.into_result() {
+            let invalid_scope_errors: Vec<_> = errors
+                .iter()
+                .filter_map(|e| match &e.kind {
+                    ParseErrorKind::InvalidScope { found, .. } => Some(found.clone()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(invalid_scope_errors.len(), 1);
+            assert_eq!(invalid_scope_errors[0], "database");
+
+            let type_as_scope_errors = errors
+                .iter()
+                .filter(|e| matches!(&e.kind, ParseErrorKind::TypeUsedAsScope { .. }))
+                .count();
+            assert_eq!(type_as_scope_errors, 0);
         }
     }
 

@@ -275,6 +275,19 @@ impl ErrorReporter {
                 };
                 (msg, label, Some(help))
             }
+            ParseErrorKind::TypeUsedAsScope {
+                found,
+                expected_scopes,
+                available_types: _,
+            } => {
+                let msg = format!("'{found}' is a type, not a scope");
+                let label = format!("'{found}' is not allowed as a scope");
+                let valid_scopes = expected_scopes.join(", ");
+                let help = format!(
+                    "'{found}' is a valid commit type, but it cannot be used as a scope.\nValid scopes: {valid_scopes}"
+                );
+                (msg, label, Some(help))
+            }
             ParseErrorKind::MissingClosingParen => (
                 "Missing closing parenthesis".to_string(),
                 "expected ')' here".to_string(),
@@ -478,6 +491,19 @@ impl ErrorReporter {
                 } else {
                     format!("Valid scopes: {valid_scopes}")
                 };
+                (msg, label, Some(help))
+            }
+            ParseErrorKind::TypeUsedAsScope {
+                found,
+                expected_scopes,
+                available_types: _,
+            } => {
+                let msg = format!("'{found}' is a type, not a scope");
+                let label = format!("'{found}' is not allowed as a scope");
+                let valid_scopes = expected_scopes.join(", ");
+                let help = format!(
+                    "'{found}' is a valid commit type, but it cannot be used as a scope.\nValid scopes: {valid_scopes}"
+                );
                 (msg, label, Some(help))
             }
             ParseErrorKind::MissingClosingParen => (
