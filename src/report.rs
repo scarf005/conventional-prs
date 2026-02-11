@@ -13,6 +13,123 @@ fn find_similar(target: &str, candidates: &[String]) -> Option<String> {
         .map(|(candidate, _)| candidate.clone())
 }
 
+fn get_error_details(kind: &ParseErrorKind) -> (String, String, Option<String>) {
+    match kind {
+        ParseErrorKind::InvalidType { found, expected } => {
+            let msg = format!("Invalid commit type '{found}'");
+            let label = format!("'{found}' is not a valid type");
+            let suggestion = find_similar(found, expected);
+            let valid_types = expected.join(", ");
+
+            let help = if let Some(suggestion) = suggestion {
+                format!("Did you mean '{suggestion}'?\nValid types: {valid_types}")
+            } else {
+                format!("Valid types: {valid_types}")
+            };
+            (msg, label, Some(help))
+        }
+        ParseErrorKind::InvalidScope { found, expected } => {
+            let msg = format!("Invalid scope '{found}'");
+            let label = format!("'{found}' is not a valid scope");
+            let suggestion = find_similar(found, expected);
+            let valid_scopes = expected.join(", ");
+
+            let help = if let Some(suggestion) = suggestion {
+                format!("Did you mean '{suggestion}'?\nValid scopes: {valid_scopes}")
+            } else {
+                format!("Valid scopes: {valid_scopes}")
+            };
+            (msg, label, Some(help))
+        }
+        ParseErrorKind::TypeUsedAsScope {
+            found,
+            expected_scopes,
+            available_types: _,
+        } => {
+            let msg = format!("'{found}' is a type, not a scope");
+            let label = format!("'{found}' is not allowed as a scope");
+            let valid_scopes = expected_scopes.join(", ");
+            let help = format!(
+                "'{found}' is a valid commit type, but it cannot be used as a scope.\nValid scopes: {valid_scopes}"
+            );
+            (msg, label, Some(help))
+        }
+        ParseErrorKind::MissingClosingParen => (
+            "Missing closing parenthesis".to_string(),
+            "expected ')' here".to_string(),
+            Some("Add a closing ')' after the scope".to_string()),
+        ),
+        ParseErrorKind::MissingSeparator => (
+            "Missing separator".to_string(),
+            "expected ': ' here".to_string(),
+            Some("Add a colon followed by a space ': '".to_string()),
+        ),
+        ParseErrorKind::MissingDescription => (
+            "Missing description".to_string(),
+            "description is required".to_string(),
+            Some("Add a description after the colon".to_string()),
+        ),
+        ParseErrorKind::EmptyType => (
+            "Empty type".to_string(),
+            "type cannot be empty".to_string(),
+            Some("Add a commit type (e.g., 'feat', 'fix')".to_string()),
+        ),
+        ParseErrorKind::EmptyScope => (
+            "Empty scope".to_string(),
+            "scope cannot be empty".to_string(),
+            Some("Either remove the parentheses or add a scope inside them".to_string()),
+        ),
+        ParseErrorKind::UnexpectedChar(c) => (
+            format!("Unexpected character '{c}'"),
+            "unexpected character".to_string(),
+            None,
+        ),
+        ParseErrorKind::GenericParseError(msg) => (
+            msg.clone(),
+            "parse error".to_string(),
+            Some(
+                "Ensure your commit message follows the format: type(scope): description"
+                    .to_string(),
+            ),
+        ),
+        ParseErrorKind::ExtraSpaceBeforeColon => (
+            "Extra space found between type and colon".to_string(),
+            "extra space found here".to_string(),
+            Some("Remove spaces between the type/scope and the colon".to_string()),
+        ),
+        ParseErrorKind::ExtraSpaceAfterColon => (
+            "Extra spaces after colon".to_string(),
+            "too many spaces".to_string(),
+            Some("Use exactly one space after the colon".to_string()),
+        ),
+        ParseErrorKind::MissingColon => (
+            "Missing colon separator".to_string(),
+            "expected ':' here".to_string(),
+            Some("Add a colon ':' after the type/scope, followed by a space".to_string()),
+        ),
+        ParseErrorKind::MissingSpace => (
+            "Missing space after colon".to_string(),
+            "expected space here".to_string(),
+            Some("Add a space after the colon, before the description".to_string()),
+        ),
+        ParseErrorKind::TrailingSpaces => (
+            "Trailing spaces at end of commit message".to_string(),
+            "trailing whitespace".to_string(),
+            Some("Remove trailing spaces from the end of the commit message".to_string()),
+        ),
+        ParseErrorKind::ExtraSpaceAfterOpenParen => (
+            "Extra space after opening parenthesis".to_string(),
+            "unexpected space here".to_string(),
+            Some("Remove the space immediately after '('".to_string()),
+        ),
+        ParseErrorKind::ExtraSpaceBeforeCloseParen => (
+            "Extra space before closing parenthesis".to_string(),
+            "unexpected space here".to_string(),
+            Some("Remove the space immediately before ')'".to_string()),
+        ),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OutputFormat {
     Color, // Colored for terminal
@@ -244,124 +361,7 @@ impl ErrorReporter {
             Some(colors.next())
         };
 
-        let (message, label_text, help_text) = match &error.kind {
-            ParseErrorKind::InvalidType { found, expected } => {
-                let msg = format!("Invalid commit type '{found}'");
-                let label = format!("'{found}' is not a valid type");
-
-                // Find similar type for suggestion
-                let suggestion = find_similar(found, expected);
-                let valid_types = expected.join(", ");
-
-                let help = if let Some(suggestion) = suggestion {
-                    format!("Did you mean '{suggestion}'?\nValid types: {valid_types}")
-                } else {
-                    format!("Valid types: {valid_types}")
-                };
-                (msg, label, Some(help))
-            }
-            ParseErrorKind::InvalidScope { found, expected } => {
-                let msg = format!("Invalid scope '{found}'");
-                let label = format!("'{found}' is not a valid scope");
-
-                // Find similar scope for suggestion
-                let suggestion = find_similar(found, expected);
-                let valid_scopes = expected.join(", ");
-
-                let help = if let Some(suggestion) = suggestion {
-                    format!("Did you mean '{suggestion}'?\nValid scopes: {valid_scopes}")
-                } else {
-                    format!("Valid scopes: {valid_scopes}")
-                };
-                (msg, label, Some(help))
-            }
-            ParseErrorKind::TypeUsedAsScope {
-                found,
-                expected_scopes,
-                available_types: _,
-            } => {
-                let msg = format!("'{found}' is a type, not a scope");
-                let label = format!("'{found}' is not allowed as a scope");
-                let valid_scopes = expected_scopes.join(", ");
-                let help = format!(
-                    "'{found}' is a valid commit type, but it cannot be used as a scope.\nValid scopes: {valid_scopes}"
-                );
-                (msg, label, Some(help))
-            }
-            ParseErrorKind::MissingClosingParen => (
-                "Missing closing parenthesis".to_string(),
-                "expected ')' here".to_string(),
-                Some("Add a closing ')' after the scope".to_string()),
-            ),
-            ParseErrorKind::MissingSeparator => (
-                "Missing separator".to_string(),
-                "expected ': ' here".to_string(),
-                Some("Add a colon followed by a space ': '".to_string()),
-            ),
-            ParseErrorKind::MissingDescription => (
-                "Missing description".to_string(),
-                "description is required".to_string(),
-                Some("Add a description after the colon".to_string()),
-            ),
-            ParseErrorKind::EmptyType => (
-                "Empty type".to_string(),
-                "type cannot be empty".to_string(),
-                Some("Add a commit type (e.g., 'feat', 'fix')".to_string()),
-            ),
-            ParseErrorKind::EmptyScope => (
-                "Empty scope".to_string(),
-                "scope cannot be empty".to_string(),
-                Some("Either remove the parentheses or add a scope inside them".to_string()),
-            ),
-            ParseErrorKind::UnexpectedChar(c) => (
-                format!("Unexpected character '{}'", c),
-                "unexpected character".to_string(),
-                None,
-            ),
-            ParseErrorKind::GenericParseError(msg) => (
-                msg.clone(),
-                "parse error".to_string(),
-                Some(
-                    "Ensure your commit message follows the format: type(scope): description"
-                        .to_string(),
-                ),
-            ),
-            ParseErrorKind::ExtraSpaceBeforeColon => (
-                "Extra space found between type and colon".to_string(),
-                "extra space found here".to_string(),
-                Some("Remove spaces between the type/scope and the colon".to_string()),
-            ),
-            ParseErrorKind::ExtraSpaceAfterColon => (
-                "Extra spaces after colon".to_string(),
-                "too many spaces".to_string(),
-                Some("Use exactly one space after the colon".to_string()),
-            ),
-            ParseErrorKind::MissingColon => (
-                "Missing colon separator".to_string(),
-                "expected ':' here".to_string(),
-                Some("Add a colon ':' after the type/scope, followed by a space".to_string()),
-            ),
-            ParseErrorKind::MissingSpace => (
-                "Missing space after colon".to_string(),
-                "expected space here".to_string(),
-                Some("Add a space after the colon, before the description".to_string()),
-            ),
-            ParseErrorKind::TrailingSpaces => (
-                "Trailing spaces at end of commit message".to_string(),
-                "trailing whitespace".to_string(),
-                Some("Remove trailing spaces from the end of the commit message".to_string()),
-            ),
-            ParseErrorKind::ExtraSpaceAfterOpenParen => (
-                "Extra space after opening parenthesis".to_string(),
-                "unexpected space here".to_string(),
-                Some("Remove the space immediately after '('".to_string()),
-            ),
-            ParseErrorKind::ExtraSpaceBeforeCloseParen => (
-                "Extra space before closing parenthesis".to_string(),
-                "unexpected space here".to_string(),
-                Some("Remove the space immediately before ')'".to_string()),
-            ),
-        };
+        let (message, label_text, help_text) = get_error_details(&error.kind);
 
         let mut label = Label::new(("input", error.span.clone())).with_message(label_text);
 
@@ -377,18 +377,7 @@ impl ErrorReporter {
             report_builder = report_builder.with_help(help);
         }
 
-        if self.format == OutputFormat::Ascii {
-            report_builder = report_builder.with_config(
-                ariadne::Config::default()
-                    .with_color(false)
-                    .with_char_set(CharSet::from(self.charset)),
-            );
-        } else {
-            report_builder = report_builder
-                .with_config(ariadne::Config::default().with_char_set(CharSet::from(self.charset)));
-        }
-
-        report_builder.finish()
+        self.apply_report_config(report_builder).finish()
     }
 
     /// Group related errors that should be displayed together
@@ -413,7 +402,7 @@ impl ErrorReporter {
 
         // Determine the overall message based on error types
         let message = if errors.len() == 1 {
-            let (msg, _, _) = self.get_error_details(&errors[0].kind);
+            let (msg, _, _) = get_error_details(&errors[0].kind);
             msg
         } else {
             "Invalid commit message format".to_string()
@@ -430,7 +419,7 @@ impl ErrorReporter {
                 Some(colors.next())
             };
 
-            let (_msg, label_text, help_text) = self.get_error_details(&error.kind);
+            let (_msg, label_text, help_text) = get_error_details(&error.kind);
             let label_with_num = format!("{label_text} (#{num})", num = idx + 1);
 
             let mut label = Label::new(("input", error.span.clone())).with_message(label_with_num);
@@ -446,139 +435,22 @@ impl ErrorReporter {
             }
         }
 
+        self.apply_report_config(report_builder).finish()
+    }
+
+    fn apply_report_config<'a>(
+        &self,
+        report_builder: ariadne::ReportBuilder<'a, (&'a str, std::ops::Range<usize>)>,
+    ) -> ariadne::ReportBuilder<'a, (&'a str, std::ops::Range<usize>)> {
         if self.format == OutputFormat::Ascii {
-            report_builder = report_builder.with_config(
+            report_builder.with_config(
                 ariadne::Config::default()
                     .with_color(false)
                     .with_char_set(CharSet::from(self.charset)),
-            );
+            )
         } else {
-            report_builder = report_builder
-                .with_config(ariadne::Config::default().with_char_set(CharSet::from(self.charset)));
-        }
-
-        report_builder.finish()
-    }
-
-    /// Extract error details (message, label, help) for a given error kind
-    fn get_error_details(&self, kind: &ParseErrorKind) -> (String, String, Option<String>) {
-        match kind {
-            ParseErrorKind::InvalidType { found, expected } => {
-                let msg = format!("Invalid commit type '{found}'");
-                let label = format!("'{found}' is not a valid type");
-
-                // Find similar type for suggestion
-                let suggestion = find_similar(found, expected);
-                let valid_types = expected.join(", ");
-
-                let help = if let Some(suggestion) = suggestion {
-                    format!("Did you mean '{suggestion}'?\nValid types: {valid_types}")
-                } else {
-                    format!("Valid types: {valid_types}")
-                };
-                (msg, label, Some(help))
-            }
-            ParseErrorKind::InvalidScope { found, expected } => {
-                let msg = format!("Invalid scope '{found}'");
-                let label = format!("'{found}' is not a valid scope");
-
-                // Find similar scope for suggestion
-                let suggestion = find_similar(found, expected);
-                let valid_scopes = expected.join(", ");
-
-                let help = if let Some(suggestion) = suggestion {
-                    format!("Did you mean '{suggestion}'?\nValid scopes: {valid_scopes}")
-                } else {
-                    format!("Valid scopes: {valid_scopes}")
-                };
-                (msg, label, Some(help))
-            }
-            ParseErrorKind::TypeUsedAsScope {
-                found,
-                expected_scopes,
-                available_types: _,
-            } => {
-                let msg = format!("'{found}' is a type, not a scope");
-                let label = format!("'{found}' is not allowed as a scope");
-                let valid_scopes = expected_scopes.join(", ");
-                let help = format!(
-                    "'{found}' is a valid commit type, but it cannot be used as a scope.\nValid scopes: {valid_scopes}"
-                );
-                (msg, label, Some(help))
-            }
-            ParseErrorKind::MissingClosingParen => (
-                "Missing closing parenthesis".to_string(),
-                "expected ')' here".to_string(),
-                Some("Add a closing ')' after the scope".to_string()),
-            ),
-            ParseErrorKind::MissingSeparator => (
-                "Missing separator".to_string(),
-                "expected ': ' here".to_string(),
-                Some("Add a colon followed by a space ': '".to_string()),
-            ),
-            ParseErrorKind::MissingDescription => (
-                "Missing description".to_string(),
-                "description is required".to_string(),
-                Some("Add a description after the colon".to_string()),
-            ),
-            ParseErrorKind::EmptyType => (
-                "Empty type".to_string(),
-                "type cannot be empty".to_string(),
-                Some("Add a commit type (e.g., 'feat', 'fix')".to_string()),
-            ),
-            ParseErrorKind::EmptyScope => (
-                "Empty scope".to_string(),
-                "scope cannot be empty".to_string(),
-                Some("Either remove the parentheses or add a scope inside them".to_string()),
-            ),
-            ParseErrorKind::UnexpectedChar(c) => (
-                format!("Unexpected character '{c}'"),
-                "unexpected character".to_string(),
-                None,
-            ),
-            ParseErrorKind::GenericParseError(msg) => (
-                msg.clone(),
-                "parse error".to_string(),
-                Some(
-                    "Ensure your commit message follows the format: type(scope): description"
-                        .to_string(),
-                ),
-            ),
-            ParseErrorKind::ExtraSpaceBeforeColon => (
-                "Extra space found between type and colon".to_string(),
-                "extra space found here".to_string(),
-                Some("Remove spaces between the type/scope and the colon".to_string()),
-            ),
-            ParseErrorKind::ExtraSpaceAfterColon => (
-                "Extra spaces after colon".to_string(),
-                "too many spaces".to_string(),
-                Some("Use exactly one space after the colon".to_string()),
-            ),
-            ParseErrorKind::MissingColon => (
-                "Missing colon separator".to_string(),
-                "expected ':' here".to_string(),
-                Some("Add a colon ':' after the type/scope, followed by a space".to_string()),
-            ),
-            ParseErrorKind::MissingSpace => (
-                "Missing space after colon".to_string(),
-                "expected space here".to_string(),
-                Some("Add a space after the colon, before the description".to_string()),
-            ),
-            ParseErrorKind::TrailingSpaces => (
-                "Trailing spaces at end of commit message".to_string(),
-                "trailing whitespace".to_string(),
-                Some("Remove trailing spaces from the end of the commit message".to_string()),
-            ),
-            ParseErrorKind::ExtraSpaceAfterOpenParen => (
-                "Extra space after opening parenthesis".to_string(),
-                "unexpected space here".to_string(),
-                Some("Remove the space immediately after '('".to_string()),
-            ),
-            ParseErrorKind::ExtraSpaceBeforeCloseParen => (
-                "Extra space before closing parenthesis".to_string(),
-                "unexpected space here".to_string(),
-                Some("Remove the space immediately before ')'".to_string()),
-            ),
+            report_builder
+                .with_config(ariadne::Config::default().with_char_set(CharSet::from(self.charset)))
         }
     }
 
