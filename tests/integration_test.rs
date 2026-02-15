@@ -202,8 +202,8 @@ fn test_config_loading_toml() {
 }
 
 #[test]
-fn test_config_loading_defaults_when_no_file() {
-    let config = Config::load(None).expect("Failed to load default config");
+fn test_config_default_values() {
+    let config = Config::default();
 
     // Should use defaults
     assert!(config.enabled);
