@@ -1,13 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-COMMIT_MSG_FILE=$1
-COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+set -euo pipefail
 
-conventional-prs --input "$COMMIT_MSG" > /dev/null 2>&1
-
-if [ $? -ne 0 ]; then
-  echo "❌ Commit message does not follow Conventional Commits specification"
-  echo ""
-  conventional-prs --input "$COMMIT_MSG"
-  exit 1
-fi
+exec "$(git rev-parse --show-toplevel)/scripts/validate-commit-title.sh" "$1"

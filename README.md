@@ -36,6 +36,25 @@ cargo install --git https://github.com/scarf005/conventional-prs
 conventional-prs --input "feat: add feature"
 ```
 
+## Local Git Hooks (prek)
+
+Use `prek` for commit-title validation via `commit-msg` hooks:
+
+```bash
+# Install prek (pick one)
+brew install prek
+# or: cargo install --locked prek
+
+# Install repo hooks from prek.toml
+prek install -f --hook-type commit-msg
+```
+
+Hook behavior:
+
+- Reads only the commit title (first line).
+- Validates title with `conventional-prs` and `.github/semantic.yml`.
+- Rejects invalid titles before commit is created.
+
 ## Rust Library
 
 ```toml
@@ -64,9 +83,11 @@ if result.is_ok() {
 Optional. Create `.github/semantic.yml`:
 
 ```yaml
-types: [feat, fix, docs]
-scopes: [api, ui]
+types: [feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert]
+scopes: [api, cli, cfg, ci, deps, docs, prs]
 ```
+
+The scope is optional; if present, it must be one of the terse values above.
 
 Compatible with [semantic-prs](https://github.com/Ezard/semantic-prs).
 
