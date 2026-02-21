@@ -1,0 +1,23 @@
+{
+  "name": "@scarf/conventional-prs",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "exports": "./mod.ts",
+  "tasks": {
+    "wasmbuild": "deno run -A jsr:@deno/wasmbuild@0.21.0 --project rs_lib",
+    "wasmbuild:check": "deno task wasmbuild --check"
+  },
+  "publish": {
+    "include": [
+      "LICENSE",
+      "README.md",
+      "deno.json",
+      "mod.ts",
+      "lib/rs_lib.d.ts",
+      "lib/rs_lib.js",
+      "lib/rs_lib.internal.js",
+      "lib/rs_lib.wasm"
+    ]
+  },
+  "fmt": { "semiColons": false, "proseWrap": "never" }
+}
