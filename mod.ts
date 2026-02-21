@@ -28,6 +28,17 @@ type BunLike = {
   }
 }
 
+const instantiateWasmExports = async (bytes: Uint8Array | ArrayBuffer): Promise<WasmExports> => {
+  const source = bytes instanceof Uint8Array ? Uint8Array.from(bytes) : bytes
+  const { instance } = await WebAssembly.instantiate(source, {
+    "./rs_lib.internal.js": {
+      __wbindgen_init_externref_table,
+    },
+  })
+
+  return instance.exports as unknown as WasmExports
+}
+
 const loadWasmExports = async (): Promise<WasmExports> => {
   const wasmModule = wasm as Record<string, unknown>
 
@@ -42,13 +53,15 @@ const loadWasmExports = async (): Promise<WasmExports> => {
     }
 
     const bytes = await bun.file(wasmModule.default).arrayBuffer()
-    const { instance } = await WebAssembly.instantiate(bytes, {
-      "./rs_lib.internal.js": {
-        __wbindgen_init_externref_table,
-      },
-    })
+    return instantiateWasmExports(bytes)
+  }
 
-    return instance.exports as unknown as WasmExports
+  if (wasmModule.default instanceof Uint8Array) {
+    return instantiateWasmExports(wasmModule.default)
+  }
+
+  if (wasmModule.default instanceof ArrayBuffer) {
+    return instantiateWasmExports(new Uint8Array(wasmModule.default))
   }
 
   throw new Error("Unsupported WASM module shape")
