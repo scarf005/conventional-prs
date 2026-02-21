@@ -1,5 +1,5 @@
 {
-  "name": "@scarf/conventional-prs",
+  "name": "@scarf005/conventional-prs",
   "version": "0.1.0",
   "license": "AGPL-3.0-only",
   "exports": "./mod.ts",
