@@ -1,0 +1,40 @@
+name: Publish JSR
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Build WASM and publish to JSR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mold linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mold clang
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+
+      - name: Build WASM bindings
+        run: deno task wasmbuild
+
+      - name: Verify publish bundle
+        run: deno publish --dry-run
+
+      - name: Publish to JSR
+        run: deno publish
