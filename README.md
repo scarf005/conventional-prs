@@ -46,17 +46,88 @@ Build the WASM bindings with `wasmbuild`:
 deno task wasmbuild
 ```
 
-Use the published package:
+Install with the official JSR package flow:
 
 ```bash
+# Deno
 deno add jsr:@scarf/conventional-prs
+
+# Bun
+bunx jsr add @scarf/conventional-prs
+
+# Node/npm
+npx jsr add @scarf/conventional-prs
 ```
+
+### `validateCommitHeader` API
 
 ```ts
 import { validateCommitHeader } from "@scarf/conventional-prs"
 
 const result = validateCommitHeader("feat(api): add endpoint")
-console.log(result)
+if (result.ok) {
+  console.log(result.header)
+}
+```
+
+Success result shape:
+
+```ts
+{
+  ok: true,
+  header: {
+    type: "feat",
+    scope: ["api"],
+    breaking: false,
+    description: "add endpoint"
+  }
+}
+```
+
+Validation error result shape:
+
+```ts
+{
+  ok: false,
+  errors: [
+    {
+      kind: "InvalidType { actual: \"fature\", expected: [\"feat\", ...] }",
+      span: { start: 0, end: 6 }
+    }
+  ]
+}
+```
+
+### Optional `semantic.yml` raw text
+
+Use the second parameter when your runtime cannot read `.github/semantic.yml`, or when config lives in a non-standard path.
+
+```ts
+import { validateCommitHeader } from "@scarf/conventional-prs"
+
+const semanticYamlRaw = `
+types: [feat, fix, chore]
+scopes: [api, ui]
+`
+
+const result = validateCommitHeader("chore(api): release", semanticYamlRaw)
+```
+
+If the YAML text is invalid, the result includes a config error:
+
+```ts
+{
+  ok: false,
+  configError: "did not find expected node content at line 1 column 13"
+}
+```
+
+### Browser usage
+
+Use a pinned version URL to avoid CDN alias lag:
+
+```ts
+import { validateCommitHeader } from "https://esm.sh/jsr/@scarf/conventional-prs@0.1.3"
 ```
 
 ## Local Git Hooks (prek)

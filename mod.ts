@@ -1,12 +1,31 @@
 /**
- * WASM bindings for validating Conventional Commit headers.
+ * Validate Conventional Commit headers with optional `semantic.yml` rules.
  *
- * @example
+ * This module exposes a synchronous parser backed by WebAssembly.
+ *
+ * @example Valid header with defaults
  * ```ts
  * import { validateCommitHeader } from "@scarf/conventional-prs"
  *
  * const result = validateCommitHeader("feat(api): add endpoint")
- * console.log(result)
+ *
+ * if (result.ok) {
+ *   console.log(result.header.type) // "feat"
+ *   console.log(result.header.scope) // ["api"]
+ * }
+ * ```
+ *
+ * @example Header validated with custom `semantic.yml` text
+ * ```ts
+ * import { validateCommitHeader } from "@scarf/conventional-prs"
+ *
+ * const semanticYml = `
+ * types: [feat, fix, chore]
+ * scopes: [api, ui]
+ * `
+ *
+ * const result = validateCommitHeader("chore(api): release", semanticYml)
+ * console.log(result.ok) // true
  * ```
  *
  * @module
@@ -16,6 +35,7 @@ import {
   __wbg_set_wasm,
   __wbindgen_init_externref_table,
   validate_header as validateHeaderRaw,
+  validate_header_with_config as validateHeaderWithConfigRaw,
 } from "./lib/rs_lib.internal.js"
 
 type WasmExports = {
@@ -100,7 +120,43 @@ export type ValidationError = {
   }
 }
 
-/** Result union returned by {@link validateCommitHeader}. */
+/**
+ * Result union returned by {@link validateCommitHeader}.
+ *
+ * @example Success
+ * ```ts
+ * {
+ *   ok: true,
+ *   header: {
+ *     type: "feat",
+ *     scope: ["api"],
+ *     breaking: false,
+ *     description: "add endpoint"
+ *   }
+ * }
+ * ```
+ *
+ * @example Parse failure
+ * ```ts
+ * {
+ *   ok: false,
+ *   errors: [
+ *     {
+ *       kind: "InvalidType { actual: \"fature\", expected: [\"feat\", ...] }",
+ *       span: { start: 0, end: 6 }
+ *     }
+ *   ]
+ * }
+ * ```
+ *
+ * @example Config failure
+ * ```ts
+ * {
+ *   ok: false,
+ *   configError: "did not find expected node content at line 1 column 13"
+ * }
+ * ```
+ */
 export type ValidationResult =
   | {
     /** True when parsing and validation succeeded. */
@@ -114,13 +170,25 @@ export type ValidationResult =
     /** All parser/validation errors collected by the parser. */
     errors: ValidationError[]
   }
+  | {
+    /** False when the optional semantic YAML config cannot be parsed. */
+    ok: false
+    /** Human-readable YAML parse error message. */
+    configError: string
+  }
 
 /**
  * Validate a conventional commit header.
  *
  * @param input Conventional commit header text, such as `feat(api): add endpoint`.
- * @returns Structured success or error result from the WASM validator.
+ * @param semanticYamlRaw Optional raw `semantic.yml` text.
+ * If provided, custom `types`/`scopes` from this YAML are used instead of defaults.
+ * @returns Structured success, parse error, or config error result.
  */
-export function validateCommitHeader(input: string): ValidationResult {
-  return JSON.parse(validateHeaderRaw(input)) as ValidationResult
+export function validateCommitHeader(input: string, semanticYamlRaw?: string): ValidationResult {
+  const rawResult = semanticYamlRaw === undefined
+    ? validateHeaderRaw(input)
+    : validateHeaderWithConfigRaw(input, semanticYamlRaw)
+
+  return JSON.parse(rawResult) as ValidationResult
 }

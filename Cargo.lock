@@ -247,6 +247,7 @@ version = "0.1.0"
 dependencies = [
  "conventional-prs",
  "serde_json",
+ "serde_yaml",
  "wasm-bindgen",
 ]
 
