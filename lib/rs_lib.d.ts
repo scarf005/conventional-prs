@@ -2,4 +2,4 @@
 // deno-lint-ignore-file
 // deno-fmt-ignore-file
 
-export function validate_header(input: string): string;
+export function validate_header(input: string): string
