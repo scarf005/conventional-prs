@@ -36,6 +36,29 @@ cargo install --git https://github.com/scarf005/conventional-prs
 conventional-prs --input "feat: add feature"
 ```
 
+## JSR (WASM)
+
+This repository also publishes a WebAssembly package to JSR as `@scarf/conventional-prs`.
+
+Build the WASM bindings with `wasmbuild`:
+
+```bash
+deno task wasmbuild
+```
+
+Use the published package:
+
+```bash
+deno add jsr:@scarf/conventional-prs
+```
+
+```ts
+import { validateCommitHeader } from "@scarf/conventional-prs"
+
+const result = validateCommitHeader("feat(api): add endpoint")
+console.log(result)
+```
+
 ## Local Git Hooks (prek)
 
 Use `prek` for commit-title validation via `commit-msg` hooks:
