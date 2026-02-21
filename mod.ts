@@ -11,7 +11,56 @@
  *
  * @module
  */
-import { validate_header as validateHeaderRaw } from "./lib/rs_lib.js"
+import * as wasm from "./lib/rs_lib.wasm"
+import {
+  __wbg_set_wasm,
+  __wbindgen_init_externref_table,
+  validate_header as validateHeaderRaw,
+} from "./lib/rs_lib.internal.js"
+
+type WasmExports = {
+  __wbindgen_start?: () => void
+}
+
+type BunLike = {
+  file: (path: string) => {
+    arrayBuffer: () => Promise<ArrayBuffer>
+  }
+}
+
+const loadWasmExports = async (): Promise<WasmExports> => {
+  const wasmModule = wasm as Record<string, unknown>
+
+  if (typeof wasmModule.__wbindgen_malloc === "function") {
+    return wasmModule as unknown as WasmExports
+  }
+
+  if (typeof wasmModule.default === "string") {
+    const bun = (globalThis as { Bun?: BunLike }).Bun
+    if (!bun) {
+      throw new Error("WASM path import detected, but Bun runtime is unavailable")
+    }
+
+    const bytes = await bun.file(wasmModule.default).arrayBuffer()
+    const { instance } = await WebAssembly.instantiate(bytes, {
+      "./rs_lib.internal.js": {
+        __wbindgen_init_externref_table,
+      },
+    })
+
+    return instance.exports as unknown as WasmExports
+  }
+
+  throw new Error("Unsupported WASM module shape")
+}
+
+const wasmExports = await loadWasmExports()
+__wbg_set_wasm(wasmExports)
+if (typeof wasmExports.__wbindgen_start === "function") {
+  wasmExports.__wbindgen_start()
+} else {
+  __wbindgen_init_externref_table()
+}
 
 /** Successful parsed header fields from a conventional commit header. */
 export type ValidationHeader = {
