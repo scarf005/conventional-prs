@@ -22,20 +22,14 @@
 
 ## Project Overview
 
-Build a **Conventional Commit Validator** using Rust. This tool will run as a
-GitHub Action to validate Pull Request titles and commit messages.
+Build a **Conventional Commit Validator** using Rust. This tool will run as a GitHub Action to validate Pull Request titles and commit messages.
 
 **Key Goals:**
 
-1. **Fault-Tolerant Parsing:** Use a parser combinator that doesn't stop at the
-   first error. It should collect all errors (e.g., missing parenthesis, invalid
-   type, missing space) and report them simultaneously.
-2. **Rich Error Reporting:** Generate Rust-compiler-style error messages (with
-   arrows, labels, and spans) using ASCII art.
-3. **Compatibility:** Fully compatible with the configuration schema of
-   [Ezard/semantic-prs](https://github.com/Ezard/semantic-prs).
-4. **Format Support:** Support configuration files in YAML, JSON, and JSONC
-   (JSON with comments).
+1. **Fault-Tolerant Parsing:** Use a parser combinator that doesn't stop at the first error. It should collect all errors (e.g., missing parenthesis, invalid type, missing space) and report them simultaneously.
+2. **Rich Error Reporting:** Generate Rust-compiler-style error messages (with arrows, labels, and spans) using ASCII art.
+3. **Compatibility:** Fully compatible with the configuration schema of [Ezard/semantic-prs](https://github.com/Ezard/semantic-prs).
+4. **Format Support:** Support configuration files in YAML, JSON, and JSONC (JSON with comments).
 
 ---
 
@@ -46,8 +40,7 @@ GitHub Action to validate Pull Request titles and commit messages.
 - **CLI Args:** `clap` (with derive features)
 - **Serialization:** `serde`, `serde_json`, `serde_yaml`, `toml`
 - **JSONC Support:** `json_comments` (to strip comments before parsing JSON)
-- **Async/Runtime:** `tokio` (only if necessary for GitHub API, otherwise
-  synchronous is fine)
+- **Async/Runtime:** `tokio` (only if necessary for GitHub API, otherwise synchronous is fine)
 
 ---
 
@@ -67,8 +60,7 @@ The tool must load configuration with the following precedence:
 
 ### Configuration Struct
 
-Map the `Ezard/semantic-prs` schema to a Rust struct. Use
-`#[serde(rename_all = "camelCase")]`.
+Map the `Ezard/semantic-prs` schema to a Rust struct. Use `#[serde(rename_all = "camelCase")]`.
 
 | Field                  | Type                  | Default                                                                                          | Description                                   |
 | :--------------------- | :-------------------- | :----------------------------------------------------------------------------------------------- | :-------------------------------------------- |
@@ -86,10 +78,8 @@ Map the `Ezard/semantic-prs` schema to a Rust struct. Use
 **Implementation Detail:**
 
 - Create a `Config` struct.
-- Implement a loader function that tries to read files in the order listed
-  above.
-- For JSONC/JSON, use a comment stripper (like `json_comments::StripComments`)
-  before passing to `serde_json`.
+- Implement a loader function that tries to read files in the order listed above.
+- For JSONC/JSON, use a comment stripper (like `json_comments::StripComments`) before passing to `serde_json`.
 
 ---
 
@@ -99,13 +89,11 @@ Implement a fault-tolerant parser that collects all errors simultaneously instea
 
 ### Grammar Rules
 
-Standard Conventional Commit Header: `type(scope): description` or `type: description`.
-(Note: This parser **only validates the header (first line)** of the commit message).
+Standard Conventional Commit Header: `type(scope): description` or `type: description`. (Note: This parser **only validates the header (first line)** of the commit message).
 
 1. **Type:**
    - Must be one of the `types` allowed in Config.
-   - _Recovery:_ If an unknown type is found (e.g., "fature"), report an error
-     with a custom label but continue parsing.
+   - _Recovery:_ If an unknown type is found (e.g., "fature"), report an error with a custom label but continue parsing.
 2. **Scope (Optional):**
    - Surrounded by `(` and `)`.
    - If `scopes` is defined in Config, the value must be in the list.
