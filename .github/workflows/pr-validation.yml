@@ -16,4 +16,4 @@ jobs:
         uses: docker://ghcr.io/scarf005/conventional-prs:main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_VALIDATE_PR_TITLE: 'true'
+          INPUT_VALIDATE_PR_TITLE: "true"
