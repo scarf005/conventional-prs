@@ -59,14 +59,16 @@ bunx jsr add @scarf/conventional-prs
 npx jsr add @scarf/conventional-prs
 ```
 
-### `validateCommitHeader` API
+### Standard Schema API
 
 ```ts
-import { validateCommitHeader } from "@scarf/conventional-prs"
+import { commitHeaderSchema } from "@scarf/conventional-prs"
 
-const result = validateCommitHeader("feat(api): add endpoint")
-if (result.ok) {
-  console.log(result.header)
+const schema = commitHeaderSchema()
+const result = schema["~standard"].validate("feat(api): add endpoint")
+
+if (!("issues" in result) || result.issues === undefined) {
+  console.log(result.value)
 }
 ```
 
@@ -74,8 +76,7 @@ Success result shape:
 
 ```ts
 {
-  ok: true,
-  header: {
+  value: {
     type: "feat",
     scope: ["api"],
     breaking: false,
@@ -88,38 +89,34 @@ Validation error result shape:
 
 ```ts
 {
-  ok: false,
-  errors: [
+  issues: [
     {
-      kind: "InvalidType { actual: \"fature\", expected: [\"feat\", ...] }",
-      span: { start: 0, end: 6 }
+      message: "InvalidType { found: \"fature\", expected: [\"feat\", ...] }"
     }
   ]
 }
 ```
 
-### Optional `semantic.yml` raw text
+### Object-only config
 
-Use the second parameter when your runtime cannot read `.github/semantic.yml`, or when config lives in a non-standard path.
+The schema factory accepts a typed config object. Raw YAML text is not accepted by the TypeScript API.
 
 ```ts
-import { validateCommitHeader } from "@scarf/conventional-prs"
+import { safeParseCommitHeader } from "@scarf/conventional-prs"
 
-const semanticYamlRaw = `
-types: [feat, fix, chore]
-scopes: [api, ui]
-`
-
-const result = validateCommitHeader("chore(api): release", semanticYamlRaw)
+const result = safeParseCommitHeader("chore(api): release", {
+  types: ["feat", "fix", "chore"],
+  scopes: ["api", "ui"],
+})
 ```
 
-If the YAML text is invalid, the result includes a config error:
+Convenience parse API:
 
 ```ts
-{
-  ok: false,
-  configError: "did not find expected node content at line 1 column 13"
-}
+import { parseCommitHeader } from "@scarf/conventional-prs"
+
+const header = parseCommitHeader("feat(api): add endpoint")
+console.log(header.type)
 ```
 
 ### Browser usage
@@ -127,7 +124,7 @@ If the YAML text is invalid, the result includes a config error:
 Use a pinned version URL to avoid CDN alias lag:
 
 ```ts
-import { validateCommitHeader } from "https://esm.sh/jsr/@scarf/conventional-prs@0.1.3"
+import { commitHeaderSchema } from "https://esm.sh/jsr/@scarf/conventional-prs@0.2.0"
 ```
 
 ## Local Git Hooks (prek)
