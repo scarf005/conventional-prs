@@ -36,96 +36,11 @@ cargo install --git https://github.com/scarf005/conventional-prs
 conventional-prs --input "feat: add feature"
 ```
 
-## JSR (WASM)
+## TypeScript bindings (JSR)
 
-This repository also publishes a WebAssembly package to JSR as `@scarf/conventional-prs`.
+TypeScript and JSR usage is documented in `README.typescript.md`.
 
-Build the WASM bindings with `wasmbuild`:
-
-```bash
-deno task wasmbuild
-```
-
-Install with the official JSR package flow:
-
-```bash
-# Deno
-deno add jsr:@scarf/conventional-prs
-
-# Bun
-bunx jsr add @scarf/conventional-prs
-
-# Node/npm
-npx jsr add @scarf/conventional-prs
-```
-
-### Standard Schema API
-
-```ts
-import { commitHeaderSchema } from "@scarf/conventional-prs"
-
-const schema = commitHeaderSchema()
-const result = schema["~standard"].validate("feat(api): add endpoint")
-
-if (!("issues" in result) || result.issues === undefined) {
-  console.log(result.value)
-}
-```
-
-Success result shape:
-
-```ts
-{
-  value: {
-    type: "feat",
-    scope: ["api"],
-    breaking: false,
-    description: "add endpoint"
-  }
-}
-```
-
-Validation error result shape:
-
-```ts
-{
-  issues: [
-    {
-      message: "InvalidType { found: \"fature\", expected: [\"feat\", ...] }"
-    }
-  ]
-}
-```
-
-### Object-only config
-
-The schema factory accepts a typed config object. Raw YAML text is not accepted by the TypeScript API.
-
-```ts
-import { safeParseCommitHeader } from "@scarf/conventional-prs"
-
-const result = safeParseCommitHeader("chore(api): release", {
-  types: ["feat", "fix", "chore"],
-  scopes: ["api", "ui"],
-})
-```
-
-Convenience parse API:
-
-```ts
-import { parseCommitHeader } from "@scarf/conventional-prs"
-
-const header = parseCommitHeader("feat(api): add endpoint")
-console.log(header.type)
-```
-
-### Browser usage
-
-Use a pinned version URL to avoid CDN alias lag:
-
-```ts
-import { commitHeaderSchema } from "https://esm.sh/jsr/@scarf/conventional-prs@0.2.0"
-```
+When publishing to JSR, the TypeScript README is shipped as the package README.
 
 ## Local Git Hooks (prek)
 
