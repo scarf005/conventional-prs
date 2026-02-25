@@ -567,6 +567,19 @@ export function commitHeaderSchema(config?: ConventionalConfig): CommitHeaderSch
   return createSchema(config)
 }
 
+/**
+ * Parses a commit header and returns a success/failure result.
+ *
+ * # Examples
+ *
+ * ```ts
+ * const ok = safeParseCommitHeader("feat(api): add endpoint")
+ * if (ok.success) {
+ *   console.log(ok.data.type)
+ * }
+ * // Output: feat
+ * ```
+ */
 export function safeParseCommitHeader(
   input: unknown,
   config?: ConventionalConfig,
@@ -574,10 +587,33 @@ export function safeParseCommitHeader(
   return commitHeaderSchema(config).safeParse(input)
 }
 
+/**
+ * Parses a commit header and throws when invalid.
+ *
+ * # Examples
+ *
+ * ```ts
+ * const header = parseCommitHeader("fix(ui): resolve button state")
+ * console.log(header.description)
+ * // Output: resolve button state
+ * ```
+ */
 export function parseCommitHeader(input: unknown, config?: ConventionalConfig): CommitHeader {
   return commitHeaderSchema(config).parse(input)
 }
 
+/**
+ * Validates and returns an Ariadne-formatted report for invalid headers.
+ * Returns `null` when valid.
+ *
+ * # Examples
+ *
+ * ```ts
+ * const report = prettyPrintCommitHeaderValidation("fature: add endpoint")
+ * console.log(typeof report === "string" && report.includes("Invalid commit type"))
+ * // Output: true
+ * ```
+ */
 export function prettyPrintCommitHeaderValidation(input: unknown, config?: ConventionalConfig): string | null {
   const result = safeParseInternal(input, config)
   if (result.success) {
@@ -591,6 +627,20 @@ export function prettyPrintCommitHeader(input: unknown, config?: ConventionalCon
   return prettyPrintCommitHeaderValidation(input, config)
 }
 
+/**
+ * Pretty-prints issues from `safeParseCommitHeader`.
+ *
+ * # Examples
+ *
+ * ```ts
+ * const parsed = safeParseCommitHeader("fature: add endpoint")
+ * if (!parsed.success) {
+ *   const report = prettyPrintCommitIssues("fature: add endpoint", parsed.issues)
+ *   console.log(report.includes("Invalid commit type"))
+ *   // Output: true
+ * }
+ * ```
+ */
 export function prettyPrintCommitIssues(
   input: unknown,
   issues: ReadonlyArray<CommitHeaderIssue>,
@@ -616,6 +666,17 @@ export function formatIssues(
   return prettyPrintCommitIssues(input, issues, config)
 }
 
+/**
+ * Parses semantic.yml text into a typed config object.
+ *
+ * # Examples
+ *
+ * ```ts
+ * const parsed = safeParseSemanticConfig("types: [feat, fix]\nscopes: [api]\n")
+ * console.log(parsed.ok)
+ * // Output: true
+ * ```
+ */
 export function safeParseSemanticConfig(yamlText: string): SemanticConfigParseResult {
   const raw = parseSemanticYamlConfigRaw(yamlText)
   const result = parseRawSemanticConfigResult(raw)
@@ -633,6 +694,17 @@ export function safeParseSemanticConfig(yamlText: string): SemanticConfigParseRe
   }
 }
 
+/**
+ * Parses semantic.yml text and throws on invalid input.
+ *
+ * # Examples
+ *
+ * ```ts
+ * const config = parseSemanticConfig("types: [feat, fix]\nscopes: [api]\n")
+ * console.log(config.types?.includes("feat") === true)
+ * // Output: true
+ * ```
+ */
 export function parseSemanticConfig(yamlText: string): ConventionalConfig {
   const result = safeParseSemanticConfig(yamlText)
   if (result.ok) {
