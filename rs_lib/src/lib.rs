@@ -1,4 +1,4 @@
-use conventional_prs::{Config, ConventionalParser};
+use conventional_prs::{Config, ConventionalParser, OutputFormat};
 use serde_json::json;
 use wasm_bindgen::prelude::*;
 
@@ -44,6 +44,19 @@ fn validate_with_config(input: &str, config: &Config) -> String {
     }
 }
 
+fn pretty_print_with_config(input: &str, config: &Config) -> String {
+    let parser = ConventionalParser::new(config.types.clone(), config.scopes.clone());
+    let result = parser.parse(input);
+
+    if result.is_ok() {
+        String::new()
+    } else {
+        result
+            .report(OutputFormat::Ascii, config.charset)
+            .unwrap_or_default()
+    }
+}
+
 #[wasm_bindgen]
 pub fn validate_header(input: &str) -> String {
     let config = Config::default();
@@ -59,6 +72,20 @@ pub fn validate_header_with_config(input: &str, semantic_yaml_raw: &str) -> Stri
             "configError": format!("{error}")
         })
         .to_string(),
+    }
+}
+
+#[wasm_bindgen]
+pub fn pretty_print_header(input: &str) -> String {
+    let config = Config::default();
+    pretty_print_with_config(input, &config)
+}
+
+#[wasm_bindgen]
+pub fn pretty_print_header_with_config(input: &str, semantic_yaml_raw: &str) -> String {
+    match serde_yaml::from_str::<Config>(semantic_yaml_raw) {
+        Ok(config) => pretty_print_with_config(input, &config),
+        Err(error) => format!("Config parse error: {error}"),
     }
 }
 
@@ -110,5 +137,26 @@ mod tests {
 
         assert_eq!(json["ok"], false);
         assert!(json["configError"].is_string());
+    }
+
+    #[test]
+    fn pretty_report_is_empty_for_valid_header() {
+        let output = pretty_print_header("feat(api): add endpoint");
+
+        assert_eq!(output, "");
+    }
+
+    #[test]
+    fn pretty_report_contains_invalid_type_message() {
+        let output = pretty_print_header("fature: typo in type");
+
+        assert!(output.contains("Invalid commit type"));
+    }
+
+    #[test]
+    fn pretty_report_contains_config_error_for_invalid_yaml() {
+        let output = pretty_print_header_with_config("feat: add endpoint", "types: [feat");
+
+        assert!(output.contains("Config parse error"));
     }
 }
