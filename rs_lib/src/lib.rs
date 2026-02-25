@@ -2,6 +2,21 @@ use conventional_prs::{Config, ConventionalParser, OutputFormat};
 use serde_json::json;
 use wasm_bindgen::prelude::*;
 
+fn config_json(config: &Config) -> serde_json::Value {
+    json!({
+        "enabled": config.enabled,
+        "titleOnly": config.title_only,
+        "commitsOnly": config.commits_only,
+        "titleAndCommits": config.title_and_commits,
+        "anyCommit": config.any_commit,
+        "types": config.types,
+        "scopes": config.scopes,
+        "allowMergeCommits": config.allow_merge_commits,
+        "allowRevertCommits": config.allow_revert_commits,
+        "targetUrl": config.target_url,
+    })
+}
+
 fn validate_with_config(input: &str, config: &Config) -> String {
     let parser = ConventionalParser::new(config.types.clone(), config.scopes.clone());
     let result = parser.parse(input);
@@ -89,6 +104,22 @@ pub fn pretty_print_header_with_config(input: &str, semantic_yaml_raw: &str) -> 
     }
 }
 
+#[wasm_bindgen]
+pub fn parse_semantic_yaml_config(semantic_yaml_raw: &str) -> String {
+    match serde_yaml::from_str::<Config>(semantic_yaml_raw) {
+        Ok(config) => json!({
+            "ok": true,
+            "config": config_json(&config)
+        })
+        .to_string(),
+        Err(error) => json!({
+            "ok": false,
+            "configError": format!("{error}")
+        })
+        .to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +189,24 @@ mod tests {
         let output = pretty_print_header_with_config("feat: add endpoint", "types: [feat");
 
         assert!(output.contains("Config parse error"));
+    }
+
+    #[test]
+    fn parses_semantic_yaml_config_to_json() {
+        let output = parse_semantic_yaml_config("types: [foo]\nscopes: [core]\n");
+        let json: serde_json::Value = serde_json::from_str(&output).expect("valid json output");
+
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["config"]["types"][0], "foo");
+        assert_eq!(json["config"]["scopes"][0], "core");
+    }
+
+    #[test]
+    fn parse_semantic_yaml_config_returns_error_for_invalid_yaml() {
+        let output = parse_semantic_yaml_config("types: [feat");
+        let json: serde_json::Value = serde_json::from_str(&output).expect("valid json output");
+
+        assert_eq!(json["ok"], false);
+        assert!(json["configError"].is_string());
     }
 }
