@@ -1,8 +1,12 @@
 import {
   commitHeaderSchema,
   formatIssues,
+  loadSemanticConfig,
   parseCommitHeader,
+  parseSemanticConfig,
+  prettyPrintCommitHeader,
   safeParseCommitHeader,
+  safeParseSemanticConfig,
 } from "../mod.ts"
 
 Deno.test("safeParseCommitHeader returns parsed header on success", () => {
@@ -36,7 +40,7 @@ Deno.test("safeParseCommitHeader applies object config", () => {
   }
 })
 
-Deno.test("safeParseCommitHeader returns issues on invalid header", () => {
+Deno.test("safeParseCommitHeader returns user-friendly issues with path", () => {
   const result = safeParseCommitHeader("fature: add endpoint")
 
   if (result.success) {
@@ -45,6 +49,15 @@ Deno.test("safeParseCommitHeader returns issues on invalid header", () => {
 
   if (result.issues.length === 0) {
     throw new Error("expected at least one issue")
+  }
+
+  const first = result.issues[0]
+  if (first.message.includes("InvalidType {")) {
+    throw new Error(`expected friendly issue message, got: ${first.message}`)
+  }
+
+  if (!first.path || first.path.length === 0) {
+    throw new Error("expected issue path")
   }
 })
 
@@ -78,17 +91,40 @@ Deno.test("commitHeaderSchema exposes standard validate", () => {
   if (!("issues" in invalid) || !invalid.issues || invalid.issues.length === 0) {
     throw new Error("expected issues for invalid header")
   }
+
+  const first = invalid.issues[0]
+  if (!first.path || first.path.length === 0) {
+    throw new Error("expected standard-schema issue path")
+  }
 })
 
-Deno.test("formatIssues returns non-empty text for invalid header", () => {
-  const result = safeParseCommitHeader("fature: add endpoint")
+Deno.test("prettyPrintCommitHeader keeps ariadne report", () => {
+  const report = prettyPrintCommitHeader("fature: add endpoint")
+  if (typeof report !== "string" || report.length === 0) {
+    throw new Error("expected formatted pretty report")
+  }
+
+  if (!report.includes("Invalid commit type")) {
+    throw new Error(`expected ariadne message, got: ${report}`)
+  }
+})
+
+Deno.test("prettyPrintCommitHeader returns null for valid header", () => {
+  const report = prettyPrintCommitHeader("feat(api): add endpoint")
+  if (report !== null) {
+    throw new Error(`expected null report for valid header, got: ${report}`)
+  }
+})
+
+Deno.test("formatIssues renders issue path when pretty report is unavailable", () => {
+  const result = safeParseCommitHeader(123)
   if (result.success) {
     throw new Error("expected failure result")
   }
 
-  const formatted = formatIssues("fature: add endpoint", result.issues)
-  if (formatted.length === 0) {
-    throw new Error("expected formatted issue text")
+  const formatted = formatIssues(123, result.issues)
+  if (!formatted.includes("input:")) {
+    throw new Error(`expected path-aware format output, got: ${formatted}`)
   }
 })
 
@@ -105,5 +141,51 @@ Deno.test("object-only config rejects raw yaml string", () => {
 
   if (!threw) {
     throw new Error("expected raw yaml config string to be rejected")
+  }
+})
+
+Deno.test("parseSemanticConfig parses semantic yaml into object config", () => {
+  const config = parseSemanticConfig("types: [foo]\nscopes: [core]\n")
+
+  if (!Array.isArray(config.types) || config.types[0] !== "foo") {
+    throw new Error("expected parsed types from yaml")
+  }
+
+  if (!Array.isArray(config.scopes) || config.scopes[0] !== "core") {
+    throw new Error("expected parsed scopes from yaml")
+  }
+})
+
+Deno.test("safeParseSemanticConfig returns configError for invalid yaml", () => {
+  const result = safeParseSemanticConfig("types: [feat")
+
+  if (result.ok) {
+    throw new Error("expected semantic config parse failure")
+  }
+
+  if (!result.configError.startsWith("Invalid semantic config:")) {
+    throw new Error(`expected prefixed config error, got: ${result.configError}`)
+  }
+})
+
+Deno.test("loadSemanticConfig reads semantic.yml file", async () => {
+  const readTextFile = async (path: string): Promise<string> => {
+    if (path === ".github/semantic.yml") {
+      return "types: [foo]\nscopes: [core]\n"
+    }
+
+    const error = new Error("missing") as Error & { code?: string }
+    error.code = "ENOENT"
+    throw error
+  }
+
+  const config = await loadSemanticConfig({ readTextFile })
+
+  if (!Array.isArray(config.types) || config.types[0] !== "foo") {
+    throw new Error("expected loaded types")
+  }
+
+  if (!Array.isArray(config.scopes) || config.scopes[0] !== "core") {
+    throw new Error("expected loaded scopes")
   }
 })

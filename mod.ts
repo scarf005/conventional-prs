@@ -2,6 +2,7 @@ import * as wasm from "./lib/rs_lib.wasm"
 import {
   __wbg_set_wasm,
   __wbindgen_init_externref_table,
+  parse_semantic_yaml_config as parseSemanticYamlConfigRaw,
   pretty_print_header as prettyPrintHeaderRaw,
   pretty_print_header_with_config as prettyPrintHeaderWithConfigRaw,
   validate_header as validateHeaderRaw,
@@ -15,7 +16,16 @@ type WasmExports = {
 type BunLike = {
   file: (path: string) => {
     arrayBuffer: () => Promise<ArrayBuffer>
+    text: () => Promise<string>
   }
+}
+
+type DenoLike = {
+  readTextFile: (path: string) => Promise<string>
+}
+
+type NodeFsPromisesModule = {
+  readFile: (path: string, options: { encoding: "utf8" }) => Promise<string>
 }
 
 const instantiateWasmExports = async (bytes: Uint8Array | ArrayBuffer): Promise<WasmExports> => {
@@ -112,9 +122,23 @@ type RawValidationResult =
     configError: string
   }
 
+type RawSemanticConfigResult =
+  | {
+    ok: true
+    config: ConventionalConfig
+  }
+  | {
+    ok: false
+    configError: string
+  }
+
+export interface StandardSchemaV1PathSegment {
+  readonly key: PropertyKey
+}
+
 export interface StandardSchemaV1Issue {
   readonly message: string
-  readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined
+  readonly path?: ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment> | undefined
 }
 
 export interface StandardSchemaV1SuccessResult<Output> {
@@ -155,6 +179,8 @@ export interface CommitHeaderIssue extends StandardSchemaV1Issue {
     readonly start: number
     readonly end: number
   } | undefined
+  readonly expected?: unknown
+  readonly received?: unknown
 }
 
 export interface CommitHeaderParseSuccess {
@@ -172,6 +198,30 @@ export type CommitHeaderParseResult = CommitHeaderParseSuccess | CommitHeaderPar
 export interface CommitHeaderSchema extends StandardSchemaV1<string, CommitHeader> {
   parse: (value: unknown) => CommitHeader
   safeParse: (value: unknown) => CommitHeaderParseResult
+}
+
+export interface SemanticConfigLoadOptions {
+  readonly path?: string
+  readonly searchPaths?: readonly string[]
+  readonly readTextFile?: (path: string) => Promise<string>
+}
+
+export interface SemanticConfigParseSuccess {
+  readonly ok: true
+  readonly config: ConventionalConfig
+}
+
+export interface SemanticConfigParseFailure {
+  readonly ok: false
+  readonly configError: string
+}
+
+export type SemanticConfigParseResult = SemanticConfigParseSuccess | SemanticConfigParseFailure
+
+const defaultSemanticConfigPaths: readonly string[] = [".github/semantic.yml", ".github/semantic.yaml"]
+
+const segment = (key: PropertyKey): StandardSchemaV1PathSegment => {
+  return { key }
 }
 
 const issueCodeFromKind = (kind: string): string => {
@@ -192,34 +242,182 @@ const issueCodeFromKind = (kind: string): string => {
   return "parse_error"
 }
 
-const normalizeConfig = (config: ConventionalConfig | undefined): ConventionalConfig | undefined => {
-  if (config === undefined) {
+const parseQuotedValues = (fragment: string): readonly string[] => {
+  const matches = fragment.match(/"([^"]*)"/g)
+  if (matches === null) {
+    return []
+  }
+  return matches.map((match) => match.slice(1, -1))
+}
+
+const parseFoundValue = (kind: string): string | undefined => {
+  const match = /found: "([^"]+)"/.exec(kind)
+  if (match === null) {
     return undefined
   }
+  return match[1]
+}
 
+const parseExpectedValues = (kind: string, label: string): readonly string[] => {
+  const pattern = new RegExp(`${label}: \\[(.*)\\]`)
+  const match = pattern.exec(kind)
+  if (match === null) {
+    return []
+  }
+  return parseQuotedValues(match[1])
+}
+
+type IssueDetails = {
+  message: string
+  expected?: unknown
+  received?: unknown
+}
+
+const issueDetailsFromKind = (kind: string, code: string): IssueDetails => {
+  if (code === "invalid_type") {
+    const found = parseFoundValue(kind)
+    const expected = parseExpectedValues(kind, "expected")
+    if (found !== undefined && expected.length > 0) {
+      return {
+        message: `Invalid commit type \"${found}\". Expected one of: ${expected.join(", ")}.`,
+        expected,
+        received: found,
+      }
+    }
+    return { message: "Invalid commit type." }
+  }
+
+  if (code === "invalid_scope") {
+    const found = parseFoundValue(kind)
+    const expected = parseExpectedValues(kind, "expected")
+    if (found !== undefined && expected.length > 0) {
+      return {
+        message: `Invalid scope \"${found}\". Expected one of: ${expected.join(", ")}.`,
+        expected,
+        received: found,
+      }
+    }
+    return { message: "Invalid scope." }
+  }
+
+  if (code === "type_used_as_scope") {
+    const found = parseFoundValue(kind)
+    const expectedScopes = parseExpectedValues(kind, "expected_scopes")
+    if (found !== undefined && expectedScopes.length > 0) {
+      return {
+        message: `Scope \"${found}\" is a commit type. Expected scopes: ${expectedScopes.join(", ")}.`,
+        expected: expectedScopes,
+        received: found,
+      }
+    }
+    return { message: "Scope value is a commit type." }
+  }
+
+  if (code === "missing_closing_paren") return { message: "Missing closing ')' in scope." }
+  if (code === "missing_separator") return { message: "Missing ': ' separator between header and description." }
+  if (code === "missing_description") return { message: "Missing commit description after ': '." }
+  if (code === "empty_type") return { message: "Missing commit type before scope or separator." }
+  if (code === "empty_scope") return { message: "Scope cannot be empty." }
+  if (code === "missing_colon") return { message: "Missing ':' separator." }
+  if (code === "missing_space") return { message: "Missing required space after ':'." }
+  if (code === "extra_space_before_colon") return { message: "Extra space before ':' is not allowed." }
+  if (code === "extra_space_after_colon") return { message: "Extra spaces after ':' are not allowed." }
+  if (code === "trailing_spaces") return { message: "Trailing spaces are not allowed in the header." }
+  if (code === "unexpected_char") return { message: "Unexpected character in commit header." }
+  return { message: kind }
+}
+
+const pathForCode = (code: string): ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment> => {
+  if (code === "invalid_input_type") return [segment("input")]
+  if (code === "config_invalid") return [segment("config")]
+  if (code === "invalid_type" || code === "empty_type") return [segment("type")]
+  if (code === "invalid_scope" || code === "type_used_as_scope" || code === "empty_scope") {
+    return [segment("scope")]
+  }
+  if (code === "missing_description" || code === "trailing_spaces") return [segment("description")]
+  if (
+    code === "missing_separator" ||
+    code === "missing_colon" ||
+    code === "missing_space" ||
+    code === "extra_space_before_colon" ||
+    code === "extra_space_after_colon"
+  ) {
+    return [segment("separator")]
+  }
+  return [segment("header")]
+}
+
+const pathToString = (path: ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment> | undefined): string => {
+  if (path === undefined || path.length === 0) {
+    return ""
+  }
+
+  const parts = path.map((entry) => {
+    if (typeof entry === "object" && entry !== null) {
+      return String(entry.key)
+    }
+    return String(entry)
+  })
+
+  return parts.join(".")
+}
+
+const issueLine = (issue: CommitHeaderIssue): string => {
+  const path = pathToString(issue.path)
+  if (path.length === 0) {
+    return issue.message
+  }
+  return `${path}: ${issue.message}`
+}
+
+const normalizeUnknownConfig = (config: unknown): ConventionalConfig => {
   if (typeof config !== "object" || config === null || Array.isArray(config)) {
     throw new TypeError("config must be an object when provided")
   }
 
-  if (config.types !== undefined && !Array.isArray(config.types)) {
+  const record = config as Record<string, unknown>
+
+  if (record["types"] !== undefined && !Array.isArray(record["types"])) {
     throw new TypeError("config.types must be an array of strings")
   }
-  if (config.types !== undefined && config.types.some((entry) => typeof entry !== "string")) {
+  if (Array.isArray(record["types"]) && record["types"].some((entry) => typeof entry !== "string")) {
     throw new TypeError("config.types must be an array of strings")
   }
 
-  if (config.scopes !== undefined && config.scopes !== null && !Array.isArray(config.scopes)) {
+  if (record["scopes"] !== undefined && record["scopes"] !== null && !Array.isArray(record["scopes"])) {
     throw new TypeError("config.scopes must be an array of strings, null, or undefined")
   }
   if (
-    config.scopes !== undefined &&
-    config.scopes !== null &&
-    config.scopes.some((entry) => typeof entry !== "string")
+    Array.isArray(record["scopes"]) &&
+    record["scopes"].some((entry) => typeof entry !== "string")
   ) {
     throw new TypeError("config.scopes must be an array of strings, null, or undefined")
   }
 
-  return config
+  return config as ConventionalConfig
+}
+
+const normalizeConfig = (config: ConventionalConfig | undefined): ConventionalConfig | undefined => {
+  if (config === undefined) {
+    return undefined
+  }
+  return normalizeUnknownConfig(config)
+}
+
+const resolveRuntimeConfig = (
+  baseConfig: ConventionalConfig | undefined,
+  options: StandardSchemaV1Options | undefined,
+): ConventionalConfig | undefined => {
+  if (options === undefined || options.libraryOptions === undefined) {
+    return baseConfig
+  }
+
+  const runtimeConfig = options.libraryOptions["config"]
+  if (runtimeConfig === undefined) {
+    return baseConfig
+  }
+
+  return normalizeUnknownConfig(runtimeConfig)
 }
 
 const yamlScalar = (value: string | boolean | null): string => {
@@ -267,14 +465,23 @@ const parseRawValidationResult = (raw: string): RawValidationResult => {
   return JSON.parse(raw) as RawValidationResult
 }
 
+const parseRawSemanticConfigResult = (raw: string): RawSemanticConfigResult => {
+  return JSON.parse(raw) as RawSemanticConfigResult
+}
+
 const toIssue = (entry: RawValidationError): CommitHeaderIssue => {
+  const code = issueCodeFromKind(entry.kind)
+  const details = issueDetailsFromKind(entry.kind, code)
   return {
-    code: issueCodeFromKind(entry.kind),
-    message: entry.kind,
+    code,
+    message: details.message,
+    path: pathForCode(code),
     span: {
       start: entry.span.start,
       end: entry.span.end,
     },
+    expected: details.expected,
+    received: details.received,
   }
 }
 
@@ -284,8 +491,10 @@ const safeParseInternal = (value: unknown, config: ConventionalConfig | undefine
       success: false,
       issues: [{
         code: "invalid_input_type",
-        message: "Input must be a string",
-        path: ["input"],
+        message: "Commit header input must be a string.",
+        path: pathForCode("invalid_input_type"),
+        expected: "string",
+        received: typeof value,
       }],
     }
   }
@@ -313,8 +522,8 @@ const safeParseInternal = (value: unknown, config: ConventionalConfig | undefine
       success: false,
       issues: [{
         code: "config_invalid",
-        message: result.configError,
-        path: ["config"],
+        message: `Invalid semantic config: ${result.configError}`,
+        path: pathForCode("config_invalid"),
       }],
     }
   }
@@ -325,16 +534,55 @@ const safeParseInternal = (value: unknown, config: ConventionalConfig | undefine
   }
 }
 
+const prettyPrintInternal = (input: string, config: ConventionalConfig | undefined): string => {
+  const normalized = normalizeConfig(config)
+  if (normalized === undefined) {
+    return prettyPrintHeaderRaw(input)
+  }
+  return prettyPrintHeaderWithConfigRaw(input, configToYaml(normalized))
+}
+
+const readTextFilePortable = async (path: string): Promise<string> => {
+  const deno = (globalThis as { Deno?: DenoLike }).Deno
+  if (deno !== undefined) {
+    return deno.readTextFile(path)
+  }
+
+  const bun = (globalThis as { Bun?: BunLike }).Bun
+  if (bun !== undefined) {
+    return bun.file(path).text()
+  }
+
+  try {
+    const fs = await import("node:fs/promises") as unknown as NodeFsPromisesModule
+    return fs.readFile(path, { encoding: "utf8" })
+  } catch {
+    throw new Error("No compatible file API found for reading semantic config files")
+  }
+}
+
+const isNotFoundError = (error: unknown): boolean => {
+  if (typeof error !== "object" || error === null) {
+    return false
+  }
+
+  const withCode = error as { code?: unknown; name?: unknown }
+  return withCode.code === "ENOENT" || withCode.name === "NotFound" || withCode.name === "NotFoundError"
+}
+
 const createSchema = (config: ConventionalConfig | undefined): CommitHeaderSchema => {
+  const normalizedConfig = normalizeConfig(config)
+
   const schema: CommitHeaderSchema = {
     "~standard": {
       version: 1,
       vendor: "conventional-prs",
       validate: (
         value: unknown,
-        _options?: StandardSchemaV1Options | undefined,
+        options?: StandardSchemaV1Options | undefined,
       ): StandardSchemaV1Result<CommitHeader> => {
-        const result = safeParseInternal(value, config)
+        const effectiveConfig = resolveRuntimeConfig(normalizedConfig, options)
+        const result = safeParseInternal(value, effectiveConfig)
         if (result.success) {
           return {
             value: result.data,
@@ -346,15 +594,15 @@ const createSchema = (config: ConventionalConfig | undefined): CommitHeaderSchem
       },
     },
     parse: (value: unknown): CommitHeader => {
-      const result = safeParseInternal(value, config)
+      const result = safeParseInternal(value, normalizedConfig)
       if (result.success) {
         return result.data
       }
 
-      throw new Error(formatIssues(value, result.issues, config))
+      throw new Error(formatIssues(value, result.issues, normalizedConfig))
     },
     safeParse: (value: unknown): CommitHeaderParseResult => {
-      return safeParseInternal(value, config)
+      return safeParseInternal(value, normalizedConfig)
     },
   }
   return schema
@@ -375,27 +623,85 @@ export function parseCommitHeader(input: unknown, config?: ConventionalConfig): 
   return commitHeaderSchema(config).parse(input)
 }
 
+export function prettyPrintCommitHeader(input: unknown, config?: ConventionalConfig): string | null {
+  const result = safeParseInternal(input, config)
+  if (result.success) {
+    return null
+  }
+
+  if (typeof input !== "string") {
+    return result.issues.map(issueLine).join("\n")
+  }
+
+  const report = prettyPrintInternal(input, config)
+  if (report.length > 0) {
+    return report
+  }
+
+  return result.issues.map(issueLine).join("\n")
+}
+
 export function formatIssues(
   input: unknown,
   issues: ReadonlyArray<CommitHeaderIssue>,
   config?: ConventionalConfig,
 ): string {
   if (typeof input !== "string") {
-    return issues.map((issue) => issue.message).join("\n")
+    return issues.map(issueLine).join("\n")
   }
 
-  const hasConfigIssue = issues.some((issue) => issue.code === "config_invalid")
-  if (hasConfigIssue) {
-    return issues.map((issue) => issue.message).join("\n")
-  }
-
-  const normalized = normalizeConfig(config)
-  const report = normalized === undefined
-    ? prettyPrintHeaderRaw(input)
-    : prettyPrintHeaderWithConfigRaw(input, configToYaml(normalized))
-
+  const report = prettyPrintInternal(input, config)
   if (report.length > 0) {
     return report
   }
-  return issues.map((issue) => issue.message).join("\n")
+
+  return issues.map(issueLine).join("\n")
+}
+
+export function safeParseSemanticConfig(yamlText: string): SemanticConfigParseResult {
+  const raw = parseSemanticYamlConfigRaw(yamlText)
+  const result = parseRawSemanticConfigResult(raw)
+
+  if (result.ok) {
+    return {
+      ok: true,
+      config: normalizeUnknownConfig(result.config),
+    }
+  }
+
+  return {
+    ok: false,
+    configError: `Invalid semantic config: ${result.configError}`,
+  }
+}
+
+export function parseSemanticConfig(yamlText: string): ConventionalConfig {
+  const result = safeParseSemanticConfig(yamlText)
+  if (result.ok) {
+    return result.config
+  }
+  throw new Error(result.configError)
+}
+
+export async function loadSemanticConfig(options?: SemanticConfigLoadOptions): Promise<ConventionalConfig> {
+  const readTextFile = options?.readTextFile ?? readTextFilePortable
+  const candidates = options?.path !== undefined
+    ? [options.path]
+    : options?.searchPaths !== undefined
+    ? [...options.searchPaths]
+    : [...defaultSemanticConfigPaths]
+
+  for (const path of candidates) {
+    try {
+      const yamlText = await readTextFile(path)
+      return parseSemanticConfig(yamlText)
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        continue
+      }
+      throw error
+    }
+  }
+
+  throw new Error(`No semantic config file found. Tried: ${candidates.join(", ")}`)
 }
