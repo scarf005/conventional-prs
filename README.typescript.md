@@ -49,6 +49,12 @@ if (result.issues) {
 }
 ```
 
+Output:
+
+```text
+feat
+```
+
 ### Example: async-safe `~standard.validate`
 
 ```ts
@@ -63,6 +69,12 @@ if (result instanceof Promise) {
 if (result.issues) {
   console.log(result.issues.map((issue) => issue.message))
 }
+```
+
+Output:
+
+```text
+["Invalid commit type \"fature\". Expected one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert."]
 ```
 
 ## `safeParseCommitHeader(input, config?)`
@@ -80,6 +92,12 @@ if (result.success) {
 }
 ```
 
+Output:
+
+```text
+{ type: "feat", scope: ["api"], breaking: false, description: "add endpoint" }
+```
+
 ### Example: failure path with issue metadata
 
 ```ts
@@ -95,6 +113,14 @@ if (!result.success) {
 }
 ```
 
+Output:
+
+```text
+invalid_type
+[{ key: "type" }]
+Invalid commit type "fature". Expected one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.
+```
+
 ## `parseCommitHeader(input, config?)`
 
 Parses and throws when the input is invalid.
@@ -104,6 +130,12 @@ import { parseCommitHeader } from "@scarf/conventional-prs"
 
 const header = parseCommitHeader("feat(api): add endpoint")
 console.log(header.description)
+```
+
+Output:
+
+```text
+add endpoint
 ```
 
 ## Pretty printing
@@ -121,6 +153,12 @@ if (report) {
 }
 ```
 
+Output (contains):
+
+```text
+Error: Invalid commit type
+```
+
 ### `prettyPrintCommitIssues(input, issues, config?)`
 
 Pretty-prints issues from `safeParseCommitHeader`. For string input, this uses Ariadne output.
@@ -132,6 +170,12 @@ const result = safeParseCommitHeader("fature: add endpoint")
 if (!result.success) {
   console.log(prettyPrintCommitIssues("fature: add endpoint", result.issues))
 }
+```
+
+Output (contains):
+
+```text
+Error: Invalid commit type
 ```
 
 ### `prettyPrintCommitHeader(input, config?)`
@@ -154,6 +198,12 @@ const config = parseSemanticConfig(yamlText)
 const result = safeParseCommitHeader("feat(api): add endpoint", config)
 ```
 
+Output:
+
+```text
+result.success === true
+```
+
 ### `safeParseSemanticConfig(yamlText)`
 
 Returns parse result without throwing.
@@ -165,6 +215,12 @@ const configResult = safeParseSemanticConfig("types: [feat\n")
 if (!configResult.ok) {
   console.error(configResult.configError)
 }
+```
+
+Output (starts with):
+
+```text
+Invalid semantic config:
 ```
 
 ## Browser usage
