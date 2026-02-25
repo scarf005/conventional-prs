@@ -1,9 +1,10 @@
 import {
   commitHeaderSchema,
   formatIssues,
-  loadSemanticConfig,
   parseCommitHeader,
   parseSemanticConfig,
+  prettyPrintCommitHeaderValidation,
+  prettyPrintCommitIssues,
   prettyPrintCommitHeader,
   safeParseCommitHeader,
   safeParseSemanticConfig,
@@ -116,6 +117,25 @@ Deno.test("prettyPrintCommitHeader returns null for valid header", () => {
   }
 })
 
+Deno.test("prettyPrintCommitHeaderValidation returns null for valid header", () => {
+  const report = prettyPrintCommitHeaderValidation("feat(api): add endpoint")
+  if (report !== null) {
+    throw new Error(`expected null report for valid header, got: ${report}`)
+  }
+})
+
+Deno.test("prettyPrintCommitIssues pretty-prints safeParse issues", () => {
+  const result = safeParseCommitHeader("fature: add endpoint")
+  if (result.success) {
+    throw new Error("expected failure result")
+  }
+
+  const report = prettyPrintCommitIssues("fature: add endpoint", result.issues)
+  if (!report.includes("Invalid commit type")) {
+    throw new Error(`expected pretty commit issue report, got: ${report}`)
+  }
+})
+
 Deno.test("formatIssues renders issue path when pretty report is unavailable", () => {
   const result = safeParseCommitHeader(123)
   if (result.success) {
@@ -165,27 +185,5 @@ Deno.test("safeParseSemanticConfig returns configError for invalid yaml", () => 
 
   if (!result.configError.startsWith("Invalid semantic config:")) {
     throw new Error(`expected prefixed config error, got: ${result.configError}`)
-  }
-})
-
-Deno.test("loadSemanticConfig reads semantic.yml file", async () => {
-  const readTextFile = async (path: string): Promise<string> => {
-    if (path === ".github/semantic.yml") {
-      return "types: [foo]\nscopes: [core]\n"
-    }
-
-    const error = new Error("missing") as Error & { code?: string }
-    error.code = "ENOENT"
-    throw error
-  }
-
-  const config = await loadSemanticConfig({ readTextFile })
-
-  if (!Array.isArray(config.types) || config.types[0] !== "foo") {
-    throw new Error("expected loaded types")
-  }
-
-  if (!Array.isArray(config.scopes) || config.scopes[0] !== "core") {
-    throw new Error("expected loaded scopes")
   }
 })

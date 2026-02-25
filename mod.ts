@@ -16,16 +16,7 @@ type WasmExports = {
 type BunLike = {
   file: (path: string) => {
     arrayBuffer: () => Promise<ArrayBuffer>
-    text: () => Promise<string>
   }
-}
-
-type DenoLike = {
-  readTextFile: (path: string) => Promise<string>
-}
-
-type NodeFsPromisesModule = {
-  readFile: (path: string, options: { encoding: "utf8" }) => Promise<string>
 }
 
 const instantiateWasmExports = async (bytes: Uint8Array | ArrayBuffer): Promise<WasmExports> => {
@@ -200,12 +191,6 @@ export interface CommitHeaderSchema extends StandardSchemaV1<string, CommitHeade
   safeParse: (value: unknown) => CommitHeaderParseResult
 }
 
-export interface SemanticConfigLoadOptions {
-  readonly path?: string
-  readonly searchPaths?: readonly string[]
-  readonly readTextFile?: (path: string) => Promise<string>
-}
-
 export interface SemanticConfigParseSuccess {
   readonly ok: true
   readonly config: ConventionalConfig
@@ -217,8 +202,6 @@ export interface SemanticConfigParseFailure {
 }
 
 export type SemanticConfigParseResult = SemanticConfigParseSuccess | SemanticConfigParseFailure
-
-const defaultSemanticConfigPaths: readonly string[] = [".github/semantic.yml", ".github/semantic.yaml"]
 
 const segment = (key: PropertyKey): StandardSchemaV1PathSegment => {
   return { key }
@@ -542,34 +525,6 @@ const prettyPrintInternal = (input: string, config: ConventionalConfig | undefin
   return prettyPrintHeaderWithConfigRaw(input, configToYaml(normalized))
 }
 
-const readTextFilePortable = async (path: string): Promise<string> => {
-  const deno = (globalThis as { Deno?: DenoLike }).Deno
-  if (deno !== undefined) {
-    return deno.readTextFile(path)
-  }
-
-  const bun = (globalThis as { Bun?: BunLike }).Bun
-  if (bun !== undefined) {
-    return bun.file(path).text()
-  }
-
-  try {
-    const fs = await import("node:fs/promises") as unknown as NodeFsPromisesModule
-    return fs.readFile(path, { encoding: "utf8" })
-  } catch {
-    throw new Error("No compatible file API found for reading semantic config files")
-  }
-}
-
-const isNotFoundError = (error: unknown): boolean => {
-  if (typeof error !== "object" || error === null) {
-    return false
-  }
-
-  const withCode = error as { code?: unknown; name?: unknown }
-  return withCode.code === "ENOENT" || withCode.name === "NotFound" || withCode.name === "NotFoundError"
-}
-
 const createSchema = (config: ConventionalConfig | undefined): CommitHeaderSchema => {
   const normalizedConfig = normalizeConfig(config)
 
@@ -623,25 +578,20 @@ export function parseCommitHeader(input: unknown, config?: ConventionalConfig): 
   return commitHeaderSchema(config).parse(input)
 }
 
-export function prettyPrintCommitHeader(input: unknown, config?: ConventionalConfig): string | null {
+export function prettyPrintCommitHeaderValidation(input: unknown, config?: ConventionalConfig): string | null {
   const result = safeParseInternal(input, config)
   if (result.success) {
     return null
   }
 
-  if (typeof input !== "string") {
-    return result.issues.map(issueLine).join("\n")
-  }
-
-  const report = prettyPrintInternal(input, config)
-  if (report.length > 0) {
-    return report
-  }
-
-  return result.issues.map(issueLine).join("\n")
+  return prettyPrintCommitIssues(input, result.issues, config)
 }
 
-export function formatIssues(
+export function prettyPrintCommitHeader(input: unknown, config?: ConventionalConfig): string | null {
+  return prettyPrintCommitHeaderValidation(input, config)
+}
+
+export function prettyPrintCommitIssues(
   input: unknown,
   issues: ReadonlyArray<CommitHeaderIssue>,
   config?: ConventionalConfig,
@@ -656,6 +606,14 @@ export function formatIssues(
   }
 
   return issues.map(issueLine).join("\n")
+}
+
+export function formatIssues(
+  input: unknown,
+  issues: ReadonlyArray<CommitHeaderIssue>,
+  config?: ConventionalConfig,
+): string {
+  return prettyPrintCommitIssues(input, issues, config)
 }
 
 export function safeParseSemanticConfig(yamlText: string): SemanticConfigParseResult {
@@ -681,27 +639,4 @@ export function parseSemanticConfig(yamlText: string): ConventionalConfig {
     return result.config
   }
   throw new Error(result.configError)
-}
-
-export async function loadSemanticConfig(options?: SemanticConfigLoadOptions): Promise<ConventionalConfig> {
-  const readTextFile = options?.readTextFile ?? readTextFilePortable
-  const candidates = options?.path !== undefined
-    ? [options.path]
-    : options?.searchPaths !== undefined
-    ? [...options.searchPaths]
-    : [...defaultSemanticConfigPaths]
-
-  for (const path of candidates) {
-    try {
-      const yamlText = await readTextFile(path)
-      return parseSemanticConfig(yamlText)
-    } catch (error) {
-      if (isNotFoundError(error)) {
-        continue
-      }
-      throw error
-    }
-  }
-
-  throw new Error(`No semantic config file found. Tried: ${candidates.join(", ")}`)
 }
