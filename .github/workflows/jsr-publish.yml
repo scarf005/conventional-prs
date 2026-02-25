@@ -37,7 +37,7 @@ jobs:
         run: cp README.typescript.md README.md
 
       - name: Verify publish bundle
-        run: deno publish --dry-run
+        run: deno publish --dry-run --allow-dirty
 
       - name: Publish to JSR
-        run: deno publish
+        run: deno publish --allow-dirty
