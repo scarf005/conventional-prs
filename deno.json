@@ -1,6 +1,6 @@
 {
   "name": "@scarf/conventional-prs",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "AGPL-3.0-only",
   "exports": "./mod.ts",
   "tasks": {
@@ -11,6 +11,7 @@
     "include": [
       "LICENSE",
       "README.md",
+      "README.typescript.md",
       "deno.json",
       "mod.ts",
       "lib/rs_lib.d.ts",
