@@ -1,0 +1,14 @@
+export const snapshot = {};
+
+snapshot[`summarize() matches snapshot 1`] = `
+"Error: Invalid commit type 'fature'
+   ,-[ input:1:1 ]
+   |
+ 1 | fature(api): add endpoint
+   | ^^^|^^  
+   |    \`---- 'fature' is not a valid type
+   | 
+   | Help: Valid types: feat, fix
+---'
+"
+`;
