@@ -2,7 +2,6 @@ import * as wasm from "./lib/rs_lib.wasm"
 import {
   __wbg_set_wasm,
   __wbindgen_init_externref_table,
-  parse_semantic_yaml_config as parseSemanticYamlConfigRaw,
   pretty_print_header as prettyPrintHeaderRaw,
   pretty_print_header_with_config as prettyPrintHeaderWithConfigRaw,
   validate_header as validateHeaderRaw,
@@ -79,11 +78,28 @@ export interface ConventionalConfig {
   targetUrl?: string
 }
 
-export interface CommitHeader {
+export interface ConventionalCommit {
   type: string
-  scope: readonly string[] | null
-  breaking: boolean
-  description: string
+  scope: string | null
+  subject: string
+  merge: null
+  header: string
+  body: string | null
+  footer: string | null
+  notes: readonly {
+    title: string
+    text: string
+  }[]
+  references: readonly {
+    action: string | null
+    owner: string | null
+    repository: string | null
+    issue: string
+    raw: string
+    prefix: string
+  }[]
+  mentions: readonly string[]
+  revert: null
 }
 
 type RawValidationError = {
@@ -107,16 +123,6 @@ type RawValidationResult =
   | {
     ok: false
     errors: RawValidationError[]
-  }
-  | {
-    ok: false
-    configError: string
-  }
-
-type RawSemanticConfigResult =
-  | {
-    ok: true
-    config: ConventionalConfig
   }
   | {
     ok: false
@@ -164,44 +170,38 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
   }
 }
 
-export interface CommitHeaderIssue extends StandardSchemaV1Issue {
-  readonly code: string
+export interface ParseIssue extends StandardSchemaV1Issue {
+  readonly kind: "validation"
+  readonly type: string
+  readonly input: unknown
+  readonly expected?: unknown
+  readonly received?: unknown
   readonly span?: {
     readonly start: number
     readonly end: number
-  } | undefined
-  readonly expected?: unknown
-  readonly received?: unknown
+  }
+  readonly config?: ConventionalConfig
 }
 
-export interface CommitHeaderParseSuccess {
+export interface SafeParseSuccess {
   readonly success: true
-  readonly data: CommitHeader
+  readonly output: ConventionalCommit
+  readonly issues?: undefined
 }
 
-export interface CommitHeaderParseFailure {
+export interface SafeParseFailure {
   readonly success: false
-  readonly issues: ReadonlyArray<CommitHeaderIssue>
+  readonly output?: undefined
+  readonly issues: ReadonlyArray<ParseIssue>
 }
 
-export type CommitHeaderParseResult = CommitHeaderParseSuccess | CommitHeaderParseFailure
+export type SafeParseResult = SafeParseSuccess | SafeParseFailure
 
-export interface CommitHeaderSchema extends StandardSchemaV1<string, CommitHeader> {
-  parse: (value: unknown) => CommitHeader
-  safeParse: (value: unknown) => CommitHeaderParseResult
+export interface ParseOptions {
+  readonly verbose?: boolean
 }
 
-export interface SemanticConfigParseSuccess {
-  readonly ok: true
-  readonly config: ConventionalConfig
-}
-
-export interface SemanticConfigParseFailure {
-  readonly ok: false
-  readonly configError: string
-}
-
-export type SemanticConfigParseResult = SemanticConfigParseSuccess | SemanticConfigParseFailure
+export interface ConfiguredSchema extends StandardSchemaV1<string, ConventionalCommit> {}
 
 const segment = (key: PropertyKey): StandardSchemaV1PathSegment => {
   return { key }
@@ -345,14 +345,6 @@ const pathToString = (path: ReadonlyArray<PropertyKey | StandardSchemaV1PathSegm
   return parts.join(".")
 }
 
-const issueLine = (issue: CommitHeaderIssue): string => {
-  const path = pathToString(issue.path)
-  if (path.length === 0) {
-    return issue.message
-  }
-  return `${path}: ${issue.message}`
-}
-
 const normalizeUnknownConfig = (config: unknown): ConventionalConfig => {
   if (typeof config !== "object" || config === null || Array.isArray(config)) {
     throw new TypeError("config must be an object when provided")
@@ -448,73 +440,56 @@ const parseRawValidationResult = (raw: string): RawValidationResult => {
   return JSON.parse(raw) as RawValidationResult
 }
 
-const parseRawSemanticConfigResult = (raw: string): RawSemanticConfigResult => {
-  return JSON.parse(raw) as RawSemanticConfigResult
-}
-
-const toIssue = (entry: RawValidationError): CommitHeaderIssue => {
+const toStandardIssue = (entry: RawValidationError): StandardSchemaV1Issue => {
   const code = issueCodeFromKind(entry.kind)
   const details = issueDetailsFromKind(entry.kind, code)
   return {
-    code,
     message: details.message,
     path: pathForCode(code),
+  }
+}
+
+const toParseIssue = (
+  entry: RawValidationError,
+  input: unknown,
+  config: ConventionalConfig | undefined,
+): ParseIssue => {
+  const type = issueCodeFromKind(entry.kind)
+  const details = issueDetailsFromKind(entry.kind, type)
+  return {
+    kind: "validation",
+    type,
+    input,
+    expected: details.expected,
+    received: details.received,
+    message: details.message,
+    path: pathForCode(type),
     span: {
       start: entry.span.start,
       end: entry.span.end,
     },
-    expected: details.expected,
-    received: details.received,
+    config,
   }
 }
 
-const safeParseInternal = (value: unknown, config: ConventionalConfig | undefined): CommitHeaderParseResult => {
-  if (typeof value !== "string") {
-    return {
-      success: false,
-      issues: [{
-        code: "invalid_input_type",
-        message: "Commit header input must be a string.",
-        path: pathForCode("invalid_input_type"),
-        expected: "string",
-        received: typeof value,
-      }],
-    }
+const issueLine = (issue: StandardSchemaV1Issue): string => {
+  const path = pathToString(issue.path)
+  if (path.length === 0) {
+    return issue.message
   }
+  return `${path}: ${issue.message}`
+}
 
+const parseIssueLine = (issue: ParseIssue): string => {
+  return issueLine(issue)
+}
+
+const validateRaw = (input: string, config: ConventionalConfig | undefined): RawValidationResult => {
   const normalized = normalizeConfig(config)
   const raw = normalized === undefined
-    ? validateHeaderRaw(value)
-    : validateHeaderWithConfigRaw(value, configToYaml(normalized))
-  const result = parseRawValidationResult(raw)
-
-  if (result.ok) {
-    return {
-      success: true,
-      data: {
-        type: result.header.type,
-        scope: result.header.scope,
-        breaking: result.header.breaking,
-        description: result.header.description,
-      },
-    }
-  }
-
-  if ("configError" in result) {
-    return {
-      success: false,
-      issues: [{
-        code: "config_invalid",
-        message: `Invalid semantic config: ${result.configError}`,
-        path: pathForCode("config_invalid"),
-      }],
-    }
-  }
-
-  return {
-    success: false,
-    issues: result.errors.map(toIssue),
-  }
+    ? validateHeaderRaw(input)
+    : validateHeaderWithConfigRaw(input, configToYaml(normalized))
+  return parseRawValidationResult(raw)
 }
 
 const prettyPrintInternal = (input: string, config: ConventionalConfig | undefined): string => {
@@ -525,190 +500,163 @@ const prettyPrintInternal = (input: string, config: ConventionalConfig | undefin
   return prettyPrintHeaderWithConfigRaw(input, configToYaml(normalized))
 }
 
-const createSchema = (config: ConventionalConfig | undefined): CommitHeaderSchema => {
-  const normalizedConfig = normalizeConfig(config)
+const toConventionalCommit = (
+  header: {
+    type: string
+    scope: string[] | null
+    breaking: boolean
+    description: string
+  },
+  input: string,
+): ConventionalCommit => {
+  return {
+    type: header.type,
+    scope: header.scope === null ? null : header.scope.join("/"),
+    subject: header.description,
+    merge: null,
+    header: input.split(/\r?\n/u, 1)[0],
+    body: null,
+    footer: null,
+    notes: header.breaking ? [{ title: "BREAKING CHANGE", text: "" }] : [],
+    references: [],
+    mentions: [],
+    revert: null,
+  }
+}
 
-  const schema: CommitHeaderSchema = {
+const schemaConfigStore = new WeakMap<object, ConventionalConfig | undefined>()
+
+const getSchemaConfig = (schema: ConfiguredSchema): ConventionalConfig | undefined => {
+  if (!schemaConfigStore.has(schema as object)) {
+    throw new TypeError("schema must be created by config()")
+  }
+  return schemaConfigStore.get(schema as object)
+}
+
+const createSchema = (baseConfig: ConventionalConfig | undefined): ConfiguredSchema => {
+  const schema: ConfiguredSchema = {
     "~standard": {
       version: 1,
       vendor: "conventional-prs",
       validate: (
         value: unknown,
         options?: StandardSchemaV1Options | undefined,
-      ): StandardSchemaV1Result<CommitHeader> => {
-        const effectiveConfig = resolveRuntimeConfig(normalizedConfig, options)
-        const result = safeParseInternal(value, effectiveConfig)
-        if (result.success) {
+      ): StandardSchemaV1Result<ConventionalCommit> => {
+        const config = resolveRuntimeConfig(baseConfig, options)
+        if (typeof value !== "string") {
           return {
-            value: result.data,
+            issues: [{
+              message: "Commit header input must be a string.",
+              path: pathForCode("invalid_input_type"),
+            }],
           }
         }
+
+        const result = validateRaw(value, config)
+        if (result.ok) {
+          return {
+            value: toConventionalCommit(result.header, value),
+          }
+        }
+
+        if ("configError" in result) {
+          return {
+            issues: [{
+              message: `Invalid semantic config: ${result.configError}`,
+              path: pathForCode("config_invalid"),
+            }],
+          }
+        }
+
         return {
-          issues: result.issues,
+          issues: result.errors.map(toStandardIssue),
         }
       },
     },
-    parse: (value: unknown): CommitHeader => {
-      const result = safeParseInternal(value, normalizedConfig)
-      if (result.success) {
-        return result.data
-      }
-
-      throw new Error(formatIssues(value, result.issues, normalizedConfig))
-    },
-    safeParse: (value: unknown): CommitHeaderParseResult => {
-      return safeParseInternal(value, normalizedConfig)
-    },
   }
+  schemaConfigStore.set(schema as object, baseConfig)
   return schema
 }
 
-export function commitHeaderSchema(config?: ConventionalConfig): CommitHeaderSchema {
-  return createSchema(config)
+export function config(options?: ConventionalConfig): ConfiguredSchema {
+  return createSchema(normalizeConfig(options))
 }
 
-/**
- * Parses a commit header and returns a success/failure result.
- *
- * # Examples
- *
- * ```ts
- * const ok = safeParseCommitHeader("feat(api): add endpoint")
- * if (ok.success) {
- *   console.log(ok.data.type)
- * }
- * // Output: feat
- * ```
- */
-export function safeParseCommitHeader(
-  input: unknown,
-  config?: ConventionalConfig,
-): CommitHeaderParseResult {
-  return commitHeaderSchema(config).safeParse(input)
-}
-
-/**
- * Parses a commit header and throws when invalid.
- *
- * # Examples
- *
- * ```ts
- * const header = parseCommitHeader("fix(ui): resolve button state")
- * console.log(header.description)
- * // Output: resolve button state
- * ```
- */
-export function parseCommitHeader(input: unknown, config?: ConventionalConfig): CommitHeader {
-  return commitHeaderSchema(config).parse(input)
-}
-
-/**
- * Validates and returns an Ariadne-formatted report for invalid headers.
- * Returns `null` when valid.
- *
- * # Examples
- *
- * ```ts
- * const report = prettyPrintCommitHeaderValidation("fature: add endpoint")
- * console.log(typeof report === "string" && report.includes("Invalid commit type"))
- * // Output: true
- * ```
- */
-export function prettyPrintCommitHeaderValidation(input: unknown, config?: ConventionalConfig): string | null {
-  const result = safeParseInternal(input, config)
-  if (result.success) {
-    return null
-  }
-
-  return prettyPrintCommitIssues(input, result.issues, config)
-}
-
-export function prettyPrintCommitHeader(input: unknown, config?: ConventionalConfig): string | null {
-  return prettyPrintCommitHeaderValidation(input, config)
-}
-
-/**
- * Pretty-prints issues from `safeParseCommitHeader`.
- *
- * # Examples
- *
- * ```ts
- * const parsed = safeParseCommitHeader("fature: add endpoint")
- * if (!parsed.success) {
- *   const report = prettyPrintCommitIssues("fature: add endpoint", parsed.issues)
- *   console.log(report.includes("Invalid commit type"))
- *   // Output: true
- * }
- * ```
- */
-export function prettyPrintCommitIssues(
-  input: unknown,
-  issues: ReadonlyArray<CommitHeaderIssue>,
-  config?: ConventionalConfig,
-): string {
+export function safeParse(schema: ConfiguredSchema, input: unknown): SafeParseResult {
+  const cfg = getSchemaConfig(schema)
   if (typeof input !== "string") {
-    return issues.map(issueLine).join("\n")
+    return {
+      success: false,
+      issues: [{
+        kind: "validation",
+        type: "invalid_input_type",
+        input,
+        expected: "string",
+        received: typeof input,
+        message: "Commit header input must be a string.",
+        path: pathForCode("invalid_input_type"),
+        config: cfg,
+      }],
+    }
   }
 
-  const report = prettyPrintInternal(input, config)
-  if (report.length > 0) {
-    return report
-  }
-
-  return issues.map(issueLine).join("\n")
-}
-
-export function formatIssues(
-  input: unknown,
-  issues: ReadonlyArray<CommitHeaderIssue>,
-  config?: ConventionalConfig,
-): string {
-  return prettyPrintCommitIssues(input, issues, config)
-}
-
-/**
- * Parses semantic.yml text into a typed config object.
- *
- * # Examples
- *
- * ```ts
- * const parsed = safeParseSemanticConfig("types: [feat, fix]\nscopes: [api]\n")
- * console.log(parsed.ok)
- * // Output: true
- * ```
- */
-export function safeParseSemanticConfig(yamlText: string): SemanticConfigParseResult {
-  const raw = parseSemanticYamlConfigRaw(yamlText)
-  const result = parseRawSemanticConfigResult(raw)
-
+  const result = validateRaw(input, cfg)
   if (result.ok) {
     return {
-      ok: true,
-      config: normalizeUnknownConfig(result.config),
+      success: true,
+      output: toConventionalCommit(result.header, input),
+    }
+  }
+
+  if ("configError" in result) {
+    return {
+      success: false,
+      issues: [{
+        kind: "validation",
+        type: "config_invalid",
+        input,
+        message: `Invalid semantic config: ${result.configError}`,
+        path: pathForCode("config_invalid"),
+        config: cfg,
+      }],
     }
   }
 
   return {
-    ok: false,
-    configError: `Invalid semantic config: ${result.configError}`,
+    success: false,
+    issues: result.errors.map((entry) => toParseIssue(entry, input, cfg)),
   }
 }
 
-/**
- * Parses semantic.yml text and throws on invalid input.
- *
- * # Examples
- *
- * ```ts
- * const config = parseSemanticConfig("types: [feat, fix]\nscopes: [api]\n")
- * console.log(config.types?.includes("feat") === true)
- * // Output: true
- * ```
- */
-export function parseSemanticConfig(yamlText: string): ConventionalConfig {
-  const result = safeParseSemanticConfig(yamlText)
-  if (result.ok) {
-    return result.config
+export function summarize(issues: ReadonlyArray<ParseIssue>): string {
+  if (issues.length === 0) {
+    return ""
   }
-  throw new Error(result.configError)
+
+  const input = issues[0].input
+  if (typeof input === "string") {
+    const report = prettyPrintInternal(input, issues[0].config)
+    if (report.length > 0) {
+      return report
+    }
+  }
+
+  return issues.map(parseIssueLine).join("\n")
+}
+
+export function parse(
+  schema: ConfiguredSchema,
+  input: unknown,
+  options?: ParseOptions,
+): ConventionalCommit {
+  const result = safeParse(schema, input)
+  if (result.success) {
+    return result.output
+  }
+
+  if (options?.verbose === false) {
+    throw new Error(parseIssueLine(result.issues[0]))
+  }
+
+  throw new Error(summarize(result.issues))
 }
