@@ -140,14 +140,16 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&output).expect("valid json output");
 
         assert_eq!(json["ok"], false);
-        assert!(json["errors"]
-            .as_array()
-            .expect("errors should be array")
-            .iter()
-            .any(|entry| entry["kind"]
-                .as_str()
-                .unwrap_or_default()
-                .contains("InvalidType")));
+        assert!(
+            json["errors"]
+                .as_array()
+                .expect("errors should be array")
+                .iter()
+                .any(|entry| entry["kind"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("InvalidType"))
+        );
     }
 
     #[test]
