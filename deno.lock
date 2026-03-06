@@ -7,7 +7,8 @@
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@^1.1.2": "1.1.4",
     "jsr:@std/path@^1.1.4": "1.1.4",
-    "jsr:@std/testing@*": "1.0.16"
+    "jsr:@std/testing@*": "1.0.16",
+    "jsr:@std/yaml@*": "1.0.12"
   },
   "jsr": {
     "@std/assert@1.0.19": {
@@ -39,6 +40,9 @@
         "jsr:@std/internal",
         "jsr:@std/path@^1.1.2"
       ]
+    },
+    "@std/yaml@1.0.12": {
+      "integrity": "7deabca4545bcedd07c5f69ea53acea71b8b4c67562f224e17b90d75944cb20c"
     }
   }
 }

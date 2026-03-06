@@ -1,4 +1,5 @@
 import * as wasm from "./lib/rs_lib.wasm"
+import { parse as parseYaml } from "jsr:@std/yaml"
 import {
   __wbg_set_wasm,
   __wbindgen_init_externref_table,
@@ -580,6 +581,14 @@ const createSchema = (baseConfig: ConventionalConfig | undefined): ConfiguredSch
 
 export function config(options?: ConventionalConfig): ConfiguredSchema {
   return createSchema(normalizeConfig(options))
+}
+
+export function parseConfig(input: string): ConfiguredSchema {
+  const parsed = parseYaml(input)
+  if (parsed === null || parsed === undefined) {
+    return config()
+  }
+  return config(normalizeUnknownConfig(parsed))
 }
 
 export function safeParse(schema: ConfiguredSchema, input: unknown): SafeParseResult {

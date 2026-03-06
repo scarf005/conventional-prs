@@ -1,7 +1,7 @@
 import { assertEquals } from "jsr:@std/assert/equals"
 import { assertSnapshot } from "jsr:@std/testing/snapshot"
 
-import { config, parse, safeParse, summarize } from "../mod.ts"
+import { config, parse, parseConfig, safeParse, summarize } from "../mod.ts"
 
 Deno.test("config() returns strict standard-schema success object", () => {
   const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
@@ -116,4 +116,34 @@ Deno.test("parse() throws full pretty report by default", () => {
   }
 
   assertEquals(message.includes("Error: Invalid commit type"), true)
+})
+
+Deno.test("parseConfig() parses semantic.yml text and returns a usable schema", () => {
+  const schema = parseConfig(`types: ["feat", "fix"]\nscopes: ["api"]\n`)
+  const result = safeParse(schema, "feat(api): add endpoint")
+
+  assertEquals(result.success, true)
+  if (!result.success) {
+    throw new Error("expected success")
+  }
+  assertEquals(result.output.type, "feat")
+  assertEquals(result.output.scope, "api")
+})
+
+Deno.test("parseConfig() applies default semantic-prs settings for empty YAML", () => {
+  const schema = parseConfig("")
+  const result = safeParse(schema, "feat: add endpoint")
+
+  assertEquals(result.success, true)
+})
+
+Deno.test("parseConfig() throws on malformed YAML", () => {
+  let message = ""
+  try {
+    parseConfig("types: [feat")
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error)
+  }
+
+  assertEquals(message.length > 0, true)
 })
