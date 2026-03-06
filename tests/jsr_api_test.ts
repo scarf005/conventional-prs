@@ -1,189 +1,149 @@
-import {
-  commitHeaderSchema,
-  formatIssues,
-  parseCommitHeader,
-  parseSemanticConfig,
-  prettyPrintCommitHeaderValidation,
-  prettyPrintCommitIssues,
-  prettyPrintCommitHeader,
-  safeParseCommitHeader,
-  safeParseSemanticConfig,
-} from "../mod.ts"
+import { assertEquals } from "jsr:@std/assert/equals"
+import { assertSnapshot } from "jsr:@std/testing/snapshot"
 
-Deno.test("safeParseCommitHeader returns parsed header on success", () => {
-  const result = safeParseCommitHeader("feat(api): add endpoint")
+import { config, parse, parseConfig, safeParse, summarize } from "../mod.ts"
 
-  if (!result.success) {
-    throw new Error("expected success result")
+Deno.test("config() returns strict standard-schema success object", () => {
+  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
+  const result = schema["~standard"].validate("feat(api): add endpoint")
+
+  if (result instanceof Promise) {
+    throw new Error("expected sync result")
   }
 
-  if (result.data.type !== "feat") {
-    throw new Error(`expected feat type, got ${result.data.type}`)
-  }
-
-  if (result.data.description !== "add endpoint") {
-    throw new Error(`unexpected description: ${result.data.description}`)
-  }
-})
-
-Deno.test("safeParseCommitHeader applies object config", () => {
-  const result = safeParseCommitHeader("foo(core): works", {
-    types: ["foo"],
-    scopes: ["core"],
+  assertEquals(result, {
+    value: {
+      type: "feat",
+      scope: "api",
+      subject: "add endpoint",
+      merge: null,
+      header: "feat(api): add endpoint",
+      body: null,
+      footer: null,
+      notes: [],
+      references: [],
+      mentions: [],
+      revert: null,
+    },
   })
-
-  if (!result.success) {
-    throw new Error("expected success result with object config")
-  }
-
-  if (result.data.type !== "foo") {
-    throw new Error(`expected foo type, got ${result.data.type}`)
-  }
 })
 
-Deno.test("safeParseCommitHeader returns user-friendly issues with path", () => {
-  const result = safeParseCommitHeader("fature: add endpoint")
+Deno.test("config() returns strict standard-schema failure issues", () => {
+  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
+  const result = schema["~standard"].validate("fature(api): add endpoint")
 
-  if (result.success) {
-    throw new Error("expected failure result")
+  if (result instanceof Promise || !("issues" in result)) {
+    throw new Error("expected sync failure result")
   }
 
-  if (result.issues.length === 0) {
-    throw new Error("expected at least one issue")
+  if (!result.issues || result.issues.length === 0) {
+    throw new Error("expected issues")
   }
 
   const first = result.issues[0]
-  if (first.message.includes("InvalidType {")) {
-    throw new Error(`expected friendly issue message, got: ${first.message}`)
-  }
-
-  if (!first.path || first.path.length === 0) {
-    throw new Error("expected issue path")
-  }
+  assertEquals(Object.keys(first).sort(), ["message", "path"])
 })
 
-Deno.test("parseCommitHeader throws on invalid header", () => {
-  let threw = false
-  try {
-    parseCommitHeader("fature: add endpoint")
-  } catch {
-    threw = true
-  }
+Deno.test("safeParse() returns conventional-commits-parser-like success object", () => {
+  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
+  const result = safeParse(schema, "feat(api): add endpoint")
 
-  if (!threw) {
-    throw new Error("expected parseCommitHeader to throw")
-  }
+  assertEquals(result, {
+    success: true,
+    output: {
+      type: "feat",
+      scope: "api",
+      subject: "add endpoint",
+      merge: null,
+      header: "feat(api): add endpoint",
+      body: null,
+      footer: null,
+      notes: [],
+      references: [],
+      mentions: [],
+      revert: null,
+    },
+  })
 })
 
-Deno.test("commitHeaderSchema exposes standard validate", () => {
-  const schema = commitHeaderSchema()
-  const valid = schema["~standard"].validate("feat(api): add endpoint")
-  if (valid instanceof Promise) {
-    throw new Error("expected sync result")
-  }
-  if ("issues" in valid && valid.issues) {
-    throw new Error("expected no issues for valid header")
-  }
+Deno.test("safeParse() returns valibot-esque issue array on failure", () => {
+  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
+  const result = safeParse(schema, "fature(api): add endpoint")
 
-  const invalid = schema["~standard"].validate("fature: add endpoint")
-  if (invalid instanceof Promise) {
-    throw new Error("expected sync result")
-  }
-  if (!("issues" in invalid) || !invalid.issues || invalid.issues.length === 0) {
-    throw new Error("expected issues for invalid header")
-  }
-
-  const first = invalid.issues[0]
-  if (!first.path || first.path.length === 0) {
-    throw new Error("expected standard-schema issue path")
-  }
-})
-
-Deno.test("prettyPrintCommitHeader keeps ariadne report", () => {
-  const report = prettyPrintCommitHeader("fature: add endpoint")
-  if (typeof report !== "string" || report.length === 0) {
-    throw new Error("expected formatted pretty report")
-  }
-
-  if (!report.includes("Invalid commit type")) {
-    throw new Error(`expected ariadne message, got: ${report}`)
-  }
-})
-
-Deno.test("prettyPrintCommitHeader returns null for valid header", () => {
-  const report = prettyPrintCommitHeader("feat(api): add endpoint")
-  if (report !== null) {
-    throw new Error(`expected null report for valid header, got: ${report}`)
-  }
-})
-
-Deno.test("prettyPrintCommitHeaderValidation returns null for valid header", () => {
-  const report = prettyPrintCommitHeaderValidation("feat(api): add endpoint")
-  if (report !== null) {
-    throw new Error(`expected null report for valid header, got: ${report}`)
-  }
-})
-
-Deno.test("prettyPrintCommitIssues pretty-prints safeParse issues", () => {
-  const result = safeParseCommitHeader("fature: add endpoint")
   if (result.success) {
-    throw new Error("expected failure result")
+    throw new Error("expected failure")
   }
 
-  const report = prettyPrintCommitIssues("fature: add endpoint", result.issues)
-  if (!report.includes("Invalid commit type")) {
-    throw new Error(`expected pretty commit issue report, got: ${report}`)
-  }
+  const first = result.issues[0]
+  assertEquals(first.kind, "validation")
+  assertEquals(first.type, "invalid_type")
+  assertEquals(typeof first.input, "string")
+  assertEquals(Array.isArray(first.path), true)
 })
 
-Deno.test("formatIssues renders issue path when pretty report is unavailable", () => {
-  const result = safeParseCommitHeader(123)
+Deno.test("summarize() matches snapshot", async (t) => {
+  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
+  const result = safeParse(schema, "fature(api): add endpoint")
   if (result.success) {
-    throw new Error("expected failure result")
+    throw new Error("expected failure")
   }
 
-  const formatted = formatIssues(123, result.issues)
-  if (!formatted.includes("input:")) {
-    throw new Error(`expected path-aware format output, got: ${formatted}`)
-  }
+  const report = summarize(result.issues)
+  await assertSnapshot(t, report)
 })
 
-Deno.test("object-only config rejects raw yaml string", () => {
-  let threw = false
+Deno.test("parse() throws single-line error with verbose false", () => {
+  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
+
+  let message = ""
   try {
-    safeParseCommitHeader(
-      "feat: add endpoint",
-      "types: [feat]" as unknown as { types?: readonly string[] },
-    )
-  } catch {
-    threw = true
+    parse(schema, "fature(api): add endpoint", { verbose: false })
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error)
   }
 
-  if (!threw) {
-    throw new Error("expected raw yaml config string to be rejected")
-  }
+  assertEquals(message.startsWith("type: Invalid commit type"), true)
 })
 
-Deno.test("parseSemanticConfig parses semantic yaml into object config", () => {
-  const config = parseSemanticConfig("types: [foo]\nscopes: [core]\n")
+Deno.test("parse() throws full pretty report by default", () => {
+  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
 
-  if (!Array.isArray(config.types) || config.types[0] !== "foo") {
-    throw new Error("expected parsed types from yaml")
+  let message = ""
+  try {
+    parse(schema, "fature(api): add endpoint")
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error)
   }
 
-  if (!Array.isArray(config.scopes) || config.scopes[0] !== "core") {
-    throw new Error("expected parsed scopes from yaml")
-  }
+  assertEquals(message.includes("Error: Invalid commit type"), true)
 })
 
-Deno.test("safeParseSemanticConfig returns configError for invalid yaml", () => {
-  const result = safeParseSemanticConfig("types: [feat")
+Deno.test("parseConfig() parses semantic.yml text and returns a usable schema", () => {
+  const schema = parseConfig(`types: ["feat", "fix"]\nscopes: ["api"]\n`)
+  const result = safeParse(schema, "feat(api): add endpoint")
 
-  if (result.ok) {
-    throw new Error("expected semantic config parse failure")
+  assertEquals(result.success, true)
+  if (!result.success) {
+    throw new Error("expected success")
+  }
+  assertEquals(result.output.type, "feat")
+  assertEquals(result.output.scope, "api")
+})
+
+Deno.test("parseConfig() applies default semantic-prs settings for empty YAML", () => {
+  const schema = parseConfig("")
+  const result = safeParse(schema, "feat: add endpoint")
+
+  assertEquals(result.success, true)
+})
+
+Deno.test("parseConfig() throws on malformed YAML", () => {
+  let message = ""
+  try {
+    parseConfig("types: [feat")
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error)
   }
 
-  if (!result.configError.startsWith("Invalid semantic config:")) {
-    throw new Error(`expected prefixed config error, got: ${result.configError}`)
-  }
+  assertEquals(message.length > 0, true)
 })
