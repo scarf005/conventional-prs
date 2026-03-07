@@ -14,6 +14,8 @@
 - **MUST** use TDD (write the failing test first, then implement)
 - **MUST** write tests (Unit tests for parser recovery are mandatory)
 - **MUST NOT** reinvent wheel: Use existing crates from crates.io instead of implementing common algorithms (e.g., use `strsim` for string similarity, not manual Levenshtein)
+- **MUST** keep user-facing docs and task descriptions extremely terse; keep only essential usage info
+- **MUST** use TypeScript bindings via `import * as pr from "..."` and always call them through the `pr` namespace
 - **MUST USE** named format parameters in macros like `format!`, `println!`, etc.
   - ✅ GOOD: `format!("Hello {name}")` when `name` is in scope
   - ❌ BAD: `format!("Hello {name}", name = name)` (redundant)

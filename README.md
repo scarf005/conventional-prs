@@ -36,6 +36,22 @@ cargo install --git https://github.com/scarf005/conventional-prs
 conventional-prs --input "feat: add feature"
 ```
 
+## Benchmarks
+
+```bash
+cargo install hyperfine
+deno task bench
+```
+
+Writes `target/benchmark/cli-vs-wasm-cold.{md,json}`.
+
+Custom:
+
+```bash
+deno task build
+BENCH_INPUT='feat(api): add recovery' BENCH_CONFIG_PATH='.github/semantic.yml' BENCH_RUNS=30 BENCH_WARMUP=5 ./scripts/benchmark-cli-vs-wasm.sh
+```
+
 ## TypeScript bindings (JSR)
 
 TypeScript and JSR usage is documented in `README.typescript.md`.
