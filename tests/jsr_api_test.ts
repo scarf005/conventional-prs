@@ -1,10 +1,10 @@
 import { assertEquals } from "jsr:@std/assert/equals"
 import { assertSnapshot } from "jsr:@std/testing/snapshot"
 
-import { config, parse, parseConfig, safeParse, summarize } from "../mod.ts"
+import * as pr from "../mod.ts"
 
 Deno.test("config() returns strict standard-schema success object", () => {
-  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
+  const schema = pr.config({ types: ["feat", "fix"], scopes: ["api"] })
   const result = schema["~standard"].validate("feat(api): add endpoint")
 
   if (result instanceof Promise) {
@@ -29,7 +29,7 @@ Deno.test("config() returns strict standard-schema success object", () => {
 })
 
 Deno.test("config() returns strict standard-schema failure issues", () => {
-  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
+  const schema = pr.config({ types: ["feat", "fix"], scopes: ["api"] })
   const result = schema["~standard"].validate("fature(api): add endpoint")
 
   if (result instanceof Promise || !("issues" in result)) {
@@ -45,8 +45,8 @@ Deno.test("config() returns strict standard-schema failure issues", () => {
 })
 
 Deno.test("safeParse() returns conventional-commits-parser-like success object", () => {
-  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
-  const result = safeParse(schema, "feat(api): add endpoint")
+  const schema = pr.config({ types: ["feat", "fix"], scopes: ["api"] })
+  const result = pr.safeParse(schema, "feat(api): add endpoint")
 
   assertEquals(result, {
     success: true,
@@ -67,8 +67,8 @@ Deno.test("safeParse() returns conventional-commits-parser-like success object",
 })
 
 Deno.test("safeParse() returns valibot-esque issue array on failure", () => {
-  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
-  const result = safeParse(schema, "fature(api): add endpoint")
+  const schema = pr.config({ types: ["feat", "fix"], scopes: ["api"] })
+  const result = pr.safeParse(schema, "fature(api): add endpoint")
 
   if (result.success) {
     throw new Error("expected failure")
@@ -82,22 +82,22 @@ Deno.test("safeParse() returns valibot-esque issue array on failure", () => {
 })
 
 Deno.test("summarize() matches snapshot", async (t) => {
-  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
-  const result = safeParse(schema, "fature(api): add endpoint")
+  const schema = pr.config({ types: ["feat", "fix"], scopes: ["api"] })
+  const result = pr.safeParse(schema, "fature(api): add endpoint")
   if (result.success) {
     throw new Error("expected failure")
   }
 
-  const report = summarize(result.issues)
+  const report = pr.summarize(result.issues)
   await assertSnapshot(t, report)
 })
 
 Deno.test("parse() throws single-line error with verbose false", () => {
-  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
+  const schema = pr.config({ types: ["feat", "fix"], scopes: ["api"] })
 
   let message = ""
   try {
-    parse(schema, "fature(api): add endpoint", { verbose: false })
+    pr.parse(schema, "fature(api): add endpoint", { verbose: false })
   } catch (error) {
     message = error instanceof Error ? error.message : String(error)
   }
@@ -106,11 +106,11 @@ Deno.test("parse() throws single-line error with verbose false", () => {
 })
 
 Deno.test("parse() throws full pretty report by default", () => {
-  const schema = config({ types: ["feat", "fix"], scopes: ["api"] })
+  const schema = pr.config({ types: ["feat", "fix"], scopes: ["api"] })
 
   let message = ""
   try {
-    parse(schema, "fature(api): add endpoint")
+    pr.parse(schema, "fature(api): add endpoint")
   } catch (error) {
     message = error instanceof Error ? error.message : String(error)
   }
@@ -119,8 +119,8 @@ Deno.test("parse() throws full pretty report by default", () => {
 })
 
 Deno.test("parseConfig() parses semantic.yml text and returns a usable schema", () => {
-  const schema = parseConfig(`types: ["feat", "fix"]\nscopes: ["api"]\n`)
-  const result = safeParse(schema, "feat(api): add endpoint")
+  const schema = pr.parseConfig(`types: ["feat", "fix"]\nscopes: ["api"]\n`)
+  const result = pr.safeParse(schema, "feat(api): add endpoint")
 
   assertEquals(result.success, true)
   if (!result.success) {
@@ -131,8 +131,8 @@ Deno.test("parseConfig() parses semantic.yml text and returns a usable schema", 
 })
 
 Deno.test("parseConfig() applies default semantic-prs settings for empty YAML", () => {
-  const schema = parseConfig("")
-  const result = safeParse(schema, "feat: add endpoint")
+  const schema = pr.parseConfig("")
+  const result = pr.safeParse(schema, "feat: add endpoint")
 
   assertEquals(result.success, true)
 })
@@ -140,7 +140,7 @@ Deno.test("parseConfig() applies default semantic-prs settings for empty YAML", 
 Deno.test("parseConfig() throws on malformed YAML", () => {
   let message = ""
   try {
-    parseConfig("types: [feat")
+    pr.parseConfig("types: [feat")
   } catch (error) {
     message = error instanceof Error ? error.message : String(error)
   }
