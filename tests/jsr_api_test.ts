@@ -66,6 +66,18 @@ Deno.test("safeParse() returns conventional-commits-parser-like success object",
   })
 })
 
+Deno.test("safeParse() preserves comma-separated multi-scope text", () => {
+  const schema = pr.config({ types: ["feat"], scopes: ["api", "ui"] })
+  const result = pr.safeParse(schema, "feat(api, ui): add endpoint")
+
+  assertEquals(result.success, true)
+  if (!result.success) {
+    throw new Error("expected success")
+  }
+
+  assertEquals(result.output.scope, "api, ui")
+})
+
 Deno.test("safeParse() returns valibot-esque issue array on failure", () => {
   const schema = pr.config({ types: ["feat", "fix"], scopes: ["api"] })
   const result = pr.safeParse(schema, "fature(api): add endpoint")

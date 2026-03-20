@@ -512,7 +512,7 @@ const toConventionalCommit = (
 ): ConventionalCommit => {
   return {
     type: header.type,
-    scope: header.scope === null ? null : header.scope.join("/"),
+    scope: header.scope === null ? null : header.scope.join(", "),
     subject: header.description,
     merge: null,
     header: input.split(/\r?\n/u, 1)[0],
