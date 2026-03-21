@@ -8,7 +8,8 @@
     "jsr:@std/path@^1.1.2": "1.1.4",
     "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/testing@*": "1.0.16",
-    "jsr:@std/yaml@*": "1.0.12"
+    "jsr:@std/yaml@*": "1.0.12",
+    "jsr:@std/yaml@^1.0.12": "1.0.12"
   },
   "jsr": {
     "@std/assert@1.0.19": {

@@ -1,5 +1,5 @@
 import * as wasm from "./lib/rs_lib.wasm"
-import { parse as parseYaml } from "jsr:@std/yaml"
+import { parse as parseYaml } from "jsr:@std/yaml@^1.0.12"
 import {
   __wbg_set_wasm,
   __wbindgen_init_externref_table,
