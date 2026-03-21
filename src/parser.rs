@@ -160,11 +160,11 @@ impl ConventionalParser {
         let (effective_input, offset) = Self::strip_git_autosquash_prefixes(input);
         let mut result = self.parse_internal(effective_input);
 
-        if offset != 0 {
-            if let Err(ref mut errors) = result {
-                for error in errors {
-                    error.span = (error.span.start + offset)..(error.span.end + offset);
-                }
+        if offset != 0
+            && let Err(ref mut errors) = result
+        {
+            for error in errors {
+                error.span = (error.span.start + offset)..(error.span.end + offset);
             }
         }
 
@@ -1487,11 +1487,7 @@ mod tests {
     #[test]
     fn test_multiple_scopes_one_is_type() {
         let parser = ConventionalParser::new(
-            vec![
-                "feat".to_string(),
-                "fix".to_string(),
-                "build".to_string(),
-            ],
+            vec!["feat".to_string(), "fix".to_string(), "build".to_string()],
             Some(vec!["api".to_string(), "ui".to_string()]),
         );
         let result = parser.parse("feat(api, build, ui): description");
