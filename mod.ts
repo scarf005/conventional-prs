@@ -19,7 +19,9 @@ type BunLike = {
   }
 }
 
-const instantiateWasmExports = async (bytes: Uint8Array | ArrayBuffer): Promise<WasmExports> => {
+const instantiateWasmExports = async (
+  bytes: Uint8Array | ArrayBuffer,
+): Promise<WasmExports> => {
   const source = bytes instanceof Uint8Array ? Uint8Array.from(bytes) : bytes
   const { instance } = await WebAssembly.instantiate(source, {
     "./rs_lib.internal.js": {
@@ -40,7 +42,9 @@ const loadWasmExports = async (): Promise<WasmExports> => {
   if (typeof wasmModule.default === "string") {
     const bun = (globalThis as { Bun?: BunLike }).Bun
     if (!bun) {
-      throw new Error("WASM path import detected, but Bun runtime is unavailable")
+      throw new Error(
+        "WASM path import detected, but Bun runtime is unavailable",
+      )
     }
 
     const bytes = await bun.file(wasmModule.default).arrayBuffer()
@@ -136,7 +140,9 @@ export interface StandardSchemaV1PathSegment {
 
 export interface StandardSchemaV1Issue {
   readonly message: string
-  readonly path?: ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment> | undefined
+  readonly path?:
+    | ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment>
+    | undefined
 }
 
 export interface StandardSchemaV1SuccessResult<Output> {
@@ -167,7 +173,9 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
     readonly validate: (
       value: unknown,
       options?: StandardSchemaV1Options | undefined,
-    ) => StandardSchemaV1Result<Output> | Promise<StandardSchemaV1Result<Output>>
+    ) =>
+      | StandardSchemaV1Result<Output>
+      | Promise<StandardSchemaV1Result<Output>>
   }
 }
 
@@ -202,7 +210,8 @@ export interface ParseOptions {
   readonly verbose?: boolean
 }
 
-export interface ConfiguredSchema extends StandardSchemaV1<string, ConventionalCommit> {}
+export interface ConfiguredSchema
+  extends StandardSchemaV1<string, ConventionalCommit> {}
 
 const segment = (key: PropertyKey): StandardSchemaV1PathSegment => {
   return { key }
@@ -219,7 +228,9 @@ const issueCodeFromKind = (kind: string): string => {
   if (kind.startsWith("EmptyScope")) return "empty_scope"
   if (kind.startsWith("MissingColon")) return "missing_colon"
   if (kind.startsWith("MissingSpace")) return "missing_space"
-  if (kind.startsWith("ExtraSpaceBeforeColon")) return "extra_space_before_colon"
+  if (kind.startsWith("ExtraSpaceBeforeColon")) {
+    return "extra_space_before_colon"
+  }
   if (kind.startsWith("ExtraSpaceAfterColon")) return "extra_space_after_colon"
   if (kind.startsWith("TrailingSpaces")) return "trailing_spaces"
   if (kind.startsWith("UnexpectedChar")) return "unexpected_char"
@@ -242,7 +253,10 @@ const parseFoundValue = (kind: string): string | undefined => {
   return match[1]
 }
 
-const parseExpectedValues = (kind: string, label: string): readonly string[] => {
+const parseExpectedValues = (
+  kind: string,
+  label: string,
+): readonly string[] => {
   const pattern = new RegExp(`${label}: \\[(.*)\\]`)
   const match = pattern.exec(kind)
   if (match === null) {
@@ -263,7 +277,9 @@ const issueDetailsFromKind = (kind: string, code: string): IssueDetails => {
     const expected = parseExpectedValues(kind, "expected")
     if (found !== undefined && expected.length > 0) {
       return {
-        message: `Invalid commit type \"${found}\". Expected one of: ${expected.join(", ")}.`,
+        message: `Invalid commit type \"${found}\". Expected one of: ${
+          expected.join(", ")
+        }.`,
         expected,
         received: found,
       }
@@ -276,7 +292,9 @@ const issueDetailsFromKind = (kind: string, code: string): IssueDetails => {
     const expected = parseExpectedValues(kind, "expected")
     if (found !== undefined && expected.length > 0) {
       return {
-        message: `Invalid scope \"${found}\". Expected one of: ${expected.join(", ")}.`,
+        message: `Invalid scope \"${found}\". Expected one of: ${
+          expected.join(", ")
+        }.`,
         expected,
         received: found,
       }
@@ -289,7 +307,9 @@ const issueDetailsFromKind = (kind: string, code: string): IssueDetails => {
     const expectedScopes = parseExpectedValues(kind, "expected_scopes")
     if (found !== undefined && expectedScopes.length > 0) {
       return {
-        message: `Scope \"${found}\" is a commit type. Expected scopes: ${expectedScopes.join(", ")}.`,
+        message: `Scope \"${found}\" is a commit type. Expected scopes: ${
+          expectedScopes.join(", ")
+        }.`,
         expected: expectedScopes,
         received: found,
       }
@@ -297,28 +317,53 @@ const issueDetailsFromKind = (kind: string, code: string): IssueDetails => {
     return { message: "Scope value is a commit type." }
   }
 
-  if (code === "missing_closing_paren") return { message: "Missing closing ')' in scope." }
-  if (code === "missing_separator") return { message: "Missing ': ' separator between header and description." }
-  if (code === "missing_description") return { message: "Missing commit description after ': '." }
-  if (code === "empty_type") return { message: "Missing commit type before scope or separator." }
+  if (code === "missing_closing_paren") {
+    return { message: "Missing closing ')' in scope." }
+  }
+  if (code === "missing_separator") {
+    return { message: "Missing ': ' separator between header and description." }
+  }
+  if (code === "missing_description") {
+    return { message: "Missing commit description after ': '." }
+  }
+  if (code === "empty_type") {
+    return { message: "Missing commit type before scope or separator." }
+  }
   if (code === "empty_scope") return { message: "Scope cannot be empty." }
   if (code === "missing_colon") return { message: "Missing ':' separator." }
-  if (code === "missing_space") return { message: "Missing required space after ':'." }
-  if (code === "extra_space_before_colon") return { message: "Extra space before ':' is not allowed." }
-  if (code === "extra_space_after_colon") return { message: "Extra spaces after ':' are not allowed." }
-  if (code === "trailing_spaces") return { message: "Trailing spaces are not allowed in the header." }
-  if (code === "unexpected_char") return { message: "Unexpected character in commit header." }
+  if (code === "missing_space") {
+    return { message: "Missing required space after ':'." }
+  }
+  if (code === "extra_space_before_colon") {
+    return { message: "Extra space before ':' is not allowed." }
+  }
+  if (code === "extra_space_after_colon") {
+    return { message: "Extra spaces after ':' are not allowed." }
+  }
+  if (code === "trailing_spaces") {
+    return { message: "Trailing spaces are not allowed in the header." }
+  }
+  if (code === "unexpected_char") {
+    return { message: "Unexpected character in commit header." }
+  }
   return { message: kind }
 }
 
-const pathForCode = (code: string): ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment> => {
+const pathForCode = (
+  code: string,
+): ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment> => {
   if (code === "invalid_input_type") return [segment("input")]
   if (code === "config_invalid") return [segment("config")]
   if (code === "invalid_type" || code === "empty_type") return [segment("type")]
-  if (code === "invalid_scope" || code === "type_used_as_scope" || code === "empty_scope") {
+  if (
+    code === "invalid_scope" || code === "type_used_as_scope" ||
+    code === "empty_scope"
+  ) {
     return [segment("scope")]
   }
-  if (code === "missing_description" || code === "trailing_spaces") return [segment("description")]
+  if (code === "missing_description" || code === "trailing_spaces") {
+    return [segment("description")]
+  }
   if (
     code === "missing_separator" ||
     code === "missing_colon" ||
@@ -331,7 +376,9 @@ const pathForCode = (code: string): ReadonlyArray<PropertyKey | StandardSchemaV1
   return [segment("header")]
 }
 
-const pathToString = (path: ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment> | undefined): string => {
+const pathToString = (
+  path: ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment> | undefined,
+): string => {
   if (path === undefined || path.length === 0) {
     return ""
   }
@@ -356,24 +403,36 @@ const normalizeUnknownConfig = (config: unknown): ConventionalConfig => {
   if (record["types"] !== undefined && !Array.isArray(record["types"])) {
     throw new TypeError("config.types must be an array of strings")
   }
-  if (Array.isArray(record["types"]) && record["types"].some((entry) => typeof entry !== "string")) {
+  if (
+    Array.isArray(record["types"]) &&
+    record["types"].some((entry) => typeof entry !== "string")
+  ) {
     throw new TypeError("config.types must be an array of strings")
   }
 
-  if (record["scopes"] !== undefined && record["scopes"] !== null && !Array.isArray(record["scopes"])) {
-    throw new TypeError("config.scopes must be an array of strings, null, or undefined")
+  if (
+    record["scopes"] !== undefined && record["scopes"] !== null &&
+    !Array.isArray(record["scopes"])
+  ) {
+    throw new TypeError(
+      "config.scopes must be an array of strings, null, or undefined",
+    )
   }
   if (
     Array.isArray(record["scopes"]) &&
     record["scopes"].some((entry) => typeof entry !== "string")
   ) {
-    throw new TypeError("config.scopes must be an array of strings, null, or undefined")
+    throw new TypeError(
+      "config.scopes must be an array of strings, null, or undefined",
+    )
   }
 
   return config as ConventionalConfig
 }
 
-const normalizeConfig = (config: ConventionalConfig | undefined): ConventionalConfig | undefined => {
+const normalizeConfig = (
+  config: ConventionalConfig | undefined,
+): ConventionalConfig | undefined => {
   if (config === undefined) {
     return undefined
   }
@@ -413,12 +472,24 @@ const yamlArray = (values: readonly string[]): string => {
 const configToYaml = (config: ConventionalConfig): string => {
   const lines: string[] = []
 
-  if (config.enabled !== undefined) lines.push(`enabled: ${yamlScalar(config.enabled)}`)
-  if (config.titleOnly !== undefined) lines.push(`titleOnly: ${yamlScalar(config.titleOnly)}`)
-  if (config.commitsOnly !== undefined) lines.push(`commitsOnly: ${yamlScalar(config.commitsOnly)}`)
-  if (config.titleAndCommits !== undefined) lines.push(`titleAndCommits: ${yamlScalar(config.titleAndCommits)}`)
-  if (config.anyCommit !== undefined) lines.push(`anyCommit: ${yamlScalar(config.anyCommit)}`)
-  if (config.types !== undefined) lines.push(`types: ${yamlArray(config.types)}`)
+  if (config.enabled !== undefined) {
+    lines.push(`enabled: ${yamlScalar(config.enabled)}`)
+  }
+  if (config.titleOnly !== undefined) {
+    lines.push(`titleOnly: ${yamlScalar(config.titleOnly)}`)
+  }
+  if (config.commitsOnly !== undefined) {
+    lines.push(`commitsOnly: ${yamlScalar(config.commitsOnly)}`)
+  }
+  if (config.titleAndCommits !== undefined) {
+    lines.push(`titleAndCommits: ${yamlScalar(config.titleAndCommits)}`)
+  }
+  if (config.anyCommit !== undefined) {
+    lines.push(`anyCommit: ${yamlScalar(config.anyCommit)}`)
+  }
+  if (config.types !== undefined) {
+    lines.push(`types: ${yamlArray(config.types)}`)
+  }
   if (config.scopes !== undefined) {
     if (config.scopes === null) {
       lines.push("scopes: null")
@@ -432,7 +503,9 @@ const configToYaml = (config: ConventionalConfig): string => {
   if (config.allowRevertCommits !== undefined) {
     lines.push(`allowRevertCommits: ${yamlScalar(config.allowRevertCommits)}`)
   }
-  if (config.targetUrl !== undefined) lines.push(`targetUrl: ${yamlScalar(config.targetUrl)}`)
+  if (config.targetUrl !== undefined) {
+    lines.push(`targetUrl: ${yamlScalar(config.targetUrl)}`)
+  }
 
   return `${lines.join("\n")}\n`
 }
@@ -485,7 +558,10 @@ const parseIssueLine = (issue: ParseIssue): string => {
   return issueLine(issue)
 }
 
-const validateRaw = (input: string, config: ConventionalConfig | undefined): RawValidationResult => {
+const validateRaw = (
+  input: string,
+  config: ConventionalConfig | undefined,
+): RawValidationResult => {
   const normalized = normalizeConfig(config)
   const raw = normalized === undefined
     ? validateHeaderRaw(input)
@@ -493,7 +569,10 @@ const validateRaw = (input: string, config: ConventionalConfig | undefined): Raw
   return parseRawValidationResult(raw)
 }
 
-const prettyPrintInternal = (input: string, config: ConventionalConfig | undefined): string => {
+const prettyPrintInternal = (
+  input: string,
+  config: ConventionalConfig | undefined,
+): string => {
   const normalized = normalizeConfig(config)
   if (normalized === undefined) {
     return prettyPrintHeaderRaw(input)
@@ -527,14 +606,18 @@ const toConventionalCommit = (
 
 const schemaConfigStore = new WeakMap<object, ConventionalConfig | undefined>()
 
-const getSchemaConfig = (schema: ConfiguredSchema): ConventionalConfig | undefined => {
+const getSchemaConfig = (
+  schema: ConfiguredSchema,
+): ConventionalConfig | undefined => {
   if (!schemaConfigStore.has(schema as object)) {
     throw new TypeError("schema must be created by config()")
   }
   return schemaConfigStore.get(schema as object)
 }
 
-const createSchema = (baseConfig: ConventionalConfig | undefined): ConfiguredSchema => {
+const createSchema = (
+  baseConfig: ConventionalConfig | undefined,
+): ConfiguredSchema => {
   const schema: ConfiguredSchema = {
     "~standard": {
       version: 1,
@@ -591,7 +674,10 @@ export function parseConfig(input: string): ConfiguredSchema {
   return config(normalizeUnknownConfig(parsed))
 }
 
-export function safeParse(schema: ConfiguredSchema, input: unknown): SafeParseResult {
+export function safeParse(
+  schema: ConfiguredSchema,
+  input: unknown,
+): SafeParseResult {
   const cfg = getSchemaConfig(schema)
   if (typeof input !== "string") {
     return {

@@ -2,6 +2,7 @@ use ariadne::CharSet;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -14,6 +15,42 @@ pub enum ConfigError {
     JsonError(#[from] serde_json::Error),
     #[error("Failed to parse TOML: {0}")]
     TomlError(#[from] toml::de::Error),
+    #[error("Unsupported config format: {0}")]
+    UnsupportedFormat(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigFormat {
+    Yaml,
+    Json,
+    Jsonc,
+    Toml,
+}
+
+impl ConfigFormat {
+    fn from_extension(extension: &str) -> Option<Self> {
+        match extension {
+            "yml" | "yaml" => Some(Self::Yaml),
+            "json" => Some(Self::Json),
+            "jsonc" => Some(Self::Jsonc),
+            "toml" => Some(Self::Toml),
+            _ => None,
+        }
+    }
+}
+
+impl FromStr for ConfigFormat {
+    type Err = ConfigError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "yml" | "yaml" => Ok(Self::Yaml),
+            "json" => Ok(Self::Json),
+            "jsonc" => Ok(Self::Jsonc),
+            "toml" => Ok(Self::Toml),
+            other => Err(ConfigError::UnsupportedFormat(other.to_string())),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,46 +206,37 @@ impl Config {
 
     fn load_from_path(path: &Path) -> Result<Self, ConfigError> {
         let content = fs::read_to_string(path)?;
-
-        // Determine format by extension
         let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
-        match extension {
-            "yml" | "yaml" => {
-                let config: Config = serde_yaml::from_str(&content)?;
-                Ok(config)
-            }
-            "json" => {
-                let config: Config = serde_json::from_str(&content)?;
-                Ok(config)
-            }
-            "jsonc" => {
-                // Strip comments before parsing
+        if let Some(format) = ConfigFormat::from_extension(extension) {
+            return Self::parse_str(&content, format);
+        }
+
+        if let Ok(config) = Self::parse_str(&content, ConfigFormat::Json) {
+            return Ok(config);
+        }
+        if let Ok(config) = Self::parse_str(&content, ConfigFormat::Jsonc) {
+            return Ok(config);
+        }
+        if let Ok(config) = Self::parse_str(&content, ConfigFormat::Yaml) {
+            return Ok(config);
+        }
+        if let Ok(config) = Self::parse_str(&content, ConfigFormat::Toml) {
+            return Ok(config);
+        }
+
+        Ok(Self::default())
+    }
+
+    pub fn parse_str(content: &str, format: ConfigFormat) -> Result<Self, ConfigError> {
+        match format {
+            ConfigFormat::Yaml => Ok(serde_yaml::from_str(content)?),
+            ConfigFormat::Json => Ok(serde_json::from_str(content)?),
+            ConfigFormat::Jsonc => {
                 let stripped = json_comments::StripComments::new(content.as_bytes());
-                let config: Config = serde_json::from_reader(stripped)?;
-                Ok(config)
+                Ok(serde_json::from_reader(stripped)?)
             }
-            "toml" => {
-                let config: Config = toml::from_str(&content)?;
-                Ok(config)
-            }
-            _ => {
-                // Try to auto-detect format
-                // Try JSON first (most strict)
-                if let Ok(config) = serde_json::from_str::<Config>(&content) {
-                    return Ok(config);
-                }
-                // Try YAML
-                if let Ok(config) = serde_yaml::from_str::<Config>(&content) {
-                    return Ok(config);
-                }
-                // Try TOML
-                if let Ok(config) = toml::from_str::<Config>(&content) {
-                    return Ok(config);
-                }
-                // If all fail, return default
-                Ok(Self::default())
-            }
+            ConfigFormat::Toml => Ok(toml::from_str(content)?),
         }
     }
 }

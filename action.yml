@@ -1,0 +1,20 @@
+name: conventional-prs
+description: Validate pull request titles against Conventional Commits.
+inputs:
+  github-token:
+    description: GitHub token used to read config files and manage PR comments.
+    required: false
+  validate-pr-title:
+    description: Validate the current pull request title.
+    required: false
+    default: "true"
+outputs:
+  valid:
+    description: Whether validation passed.
+  config-path:
+    description: Repository config path used for validation, if any.
+  report:
+    description: Validation report for invalid titles or config errors.
+runs:
+  using: node20
+  main: action/index.mjs

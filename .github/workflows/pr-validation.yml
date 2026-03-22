@@ -12,8 +12,10 @@ jobs:
       pull-requests: write
       contents: read
     steps:
+      - uses: actions/checkout@v4
+
       - name: Validate PR Title
-        uses: docker://ghcr.io/scarf005/conventional-prs:main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_VALIDATE_PR_TITLE: "true"
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          validate-pr-title: "true"

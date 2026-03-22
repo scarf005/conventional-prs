@@ -1,5 +1,6 @@
-use conventional_prs::{Config, ConventionalParser, OutputFormat};
+use conventional_prs::{Config, ConfigFormat, ConventionalParser, OutputFormat};
 use serde_json::json;
+use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 
 fn config_json(config: &Config) -> serde_json::Value {
@@ -72,6 +73,30 @@ fn pretty_print_with_config(input: &str, config: &Config) -> String {
     }
 }
 
+fn parse_config(config_raw: &str, format_hint: Option<String>) -> Result<Config, String> {
+    match format_hint {
+        Some(format) => {
+            let parsed_format =
+                ConfigFormat::from_str(&format).map_err(|error| format!("{error}"))?;
+            Config::parse_str(config_raw, parsed_format).map_err(|error| format!("{error}"))
+        }
+        None => {
+            for format in [
+                ConfigFormat::Json,
+                ConfigFormat::Jsonc,
+                ConfigFormat::Yaml,
+                ConfigFormat::Toml,
+            ] {
+                if let Ok(config) = Config::parse_str(config_raw, format) {
+                    return Ok(config);
+                }
+            }
+
+            Err("Failed to parse config as JSON, JSONC, YAML, or TOML".to_string())
+        }
+    }
+}
+
 #[wasm_bindgen]
 pub fn validate_header(input: &str) -> String {
     let config = Config::default();
@@ -99,6 +124,34 @@ pub fn pretty_print_header(input: &str) -> String {
 #[wasm_bindgen]
 pub fn pretty_print_header_with_config(input: &str, semantic_yaml_raw: &str) -> String {
     match serde_yaml::from_str::<Config>(semantic_yaml_raw) {
+        Ok(config) => pretty_print_with_config(input, &config),
+        Err(error) => format!("Config parse error: {error}"),
+    }
+}
+
+#[wasm_bindgen]
+pub fn validate_header_with_config_auto(
+    input: &str,
+    config_raw: &str,
+    format_hint: Option<String>,
+) -> String {
+    match parse_config(config_raw, format_hint) {
+        Ok(config) => validate_with_config(input, &config),
+        Err(error) => json!({
+            "ok": false,
+            "configError": format!("{error}")
+        })
+        .to_string(),
+    }
+}
+
+#[wasm_bindgen]
+pub fn pretty_print_header_with_config_auto(
+    input: &str,
+    config_raw: &str,
+    format_hint: Option<String>,
+) -> String {
+    match parse_config(config_raw, format_hint) {
         Ok(config) => pretty_print_with_config(input, &config),
         Err(error) => format!("Config parse error: {error}"),
     }
@@ -140,16 +193,14 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&output).expect("valid json output");
 
         assert_eq!(json["ok"], false);
-        assert!(
-            json["errors"]
-                .as_array()
-                .expect("errors should be array")
-                .iter()
-                .any(|entry| entry["kind"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .contains("InvalidType"))
-        );
+        assert!(json["errors"]
+            .as_array()
+            .expect("errors should be array")
+            .iter()
+            .any(|entry| entry["kind"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("InvalidType")));
     }
 
     #[test]
@@ -210,5 +261,52 @@ mod tests {
 
         assert_eq!(json["ok"], false);
         assert!(json["configError"].is_string());
+    }
+
+    #[test]
+    fn validates_header_with_jsonc_config_via_format_hint() {
+        let config = r#"{
+            // comment
+            "types": ["foo"],
+            "scopes": ["core"]
+        }"#;
+        let output = validate_header_with_config_auto(
+            "foo(core): add custom type",
+            config,
+            Some("jsonc".to_string()),
+        );
+        let json: serde_json::Value = serde_json::from_str(&output).expect("valid json output");
+
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["header"]["type"], "foo");
+        assert_eq!(json["header"]["scope"][0], "core");
+    }
+
+    #[test]
+    fn validates_header_with_toml_config_via_format_hint() {
+        let config = r#"
+types = ["foo"]
+scopes = ["core"]
+"#;
+        let output = validate_header_with_config_auto(
+            "foo(core): add custom type",
+            config,
+            Some("toml".to_string()),
+        );
+        let json: serde_json::Value = serde_json::from_str(&output).expect("valid json output");
+
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["header"]["type"], "foo");
+    }
+
+    #[test]
+    fn pretty_report_with_auto_config_returns_parse_error_for_invalid_json() {
+        let output = pretty_print_header_with_config_auto(
+            "feat: add endpoint",
+            r#"{"types": ["feat"]"#,
+            Some("json".to_string()),
+        );
+
+        assert!(output.contains("Config parse error"));
     }
 }

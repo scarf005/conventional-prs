@@ -2,6 +2,36 @@
 
 Validates PR titles against [Conventional Commits](https://www.conventionalcommits.org/). Posts error comments on PRs.
 
+## CLI Usage
+
+```bash
+cargo install --git https://github.com/scarf005/conventional-prs
+conventional-prs --input "feat: add feature"
+
+conventional-prs --input ' fet : foo '
+Error: Invalid commit message format
+   ,-[ input:1:1 ]
+   |
+ 1 |  fet : foo_
+   | ||        |  
+   | `------------ type cannot be empty (#1)
+   | ||        |  
+   | `------------ expected space here (#3)
+   |  |        |  
+   |  `----------- expected ':' here (#2)
+   |           |  
+   |           `-- trailing whitespace (#4)
+   | 
+   | Help 1: Add a commit type (e.g., 'feat', 'fix')
+   | 
+   | Help 2: Add a colon ':' after the type/scope, followed by a space
+   | 
+   | Help 3: Add a space after the colon, before the description
+   | 
+   | Help 4: Remove trailing spaces from the end of the commit message
+---'
+```
+
 ## GitHub Action
 
 Add to `.github/workflows/pr-validation.yml`:
@@ -22,19 +52,12 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: docker://ghcr.io/scarf005/conventional-prs:main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: scarf005/conventional-prs@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-Uses pre-built Docker images for fast validation (no build step required).
-
-## CLI Usage
-
-```bash
-cargo install --git https://github.com/scarf005/conventional-prs
-conventional-prs --input "feat: add feature"
-```
+Uses a JavaScript action backed by the bundled WASM validator.
 
 ## Benchmarks
 

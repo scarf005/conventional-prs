@@ -24,6 +24,10 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with: { cache: true }
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -50,6 +54,12 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt -- --check
+
+      - name: Check WASM bindings
+        run: deno task wasmbuild:check
+
+      - name: Test JavaScript action helpers
+        run: node --test action/index.test.mjs
 
   build:
     name: Build
