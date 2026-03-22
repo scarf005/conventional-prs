@@ -236,30 +236,47 @@ export interface ParseOptions {
 }
 
 export interface ConfiguredSchema
-  extends StandardSchemaV1<string, ConventionalCommit> {}
+  extends StandardSchemaV1<string, ConventionalCommit> {
+  readonly config: ConventionalConfig | undefined
+}
 
 const segment = (key: PropertyKey): StandardSchemaV1PathSegment => {
   return { key }
 }
 
 const issueCodeFromKind = (kind: string): string => {
-  if (kind.startsWith("InvalidType")) return "invalid_type"
-  if (kind.startsWith("InvalidScope")) return "invalid_scope"
-  if (kind.startsWith("TypeUsedAsScope")) return "type_used_as_scope"
-  if (kind.startsWith("MissingClosingParen")) return "missing_closing_paren"
-  if (kind.startsWith("MissingSeparator")) return "missing_separator"
-  if (kind.startsWith("MissingDescription")) return "missing_description"
-  if (kind.startsWith("EmptyType")) return "empty_type"
-  if (kind.startsWith("EmptyScope")) return "empty_scope"
-  if (kind.startsWith("MissingColon")) return "missing_colon"
-  if (kind.startsWith("MissingSpace")) return "missing_space"
-  if (kind.startsWith("ExtraSpaceBeforeColon")) {
-    return "extra_space_before_colon"
+  switch (true) {
+    case kind.startsWith("InvalidType"):
+      return "invalid_type"
+    case kind.startsWith("InvalidScope"):
+      return "invalid_scope"
+    case kind.startsWith("TypeUsedAsScope"):
+      return "type_used_as_scope"
+    case kind.startsWith("MissingClosingParen"):
+      return "missing_closing_paren"
+    case kind.startsWith("MissingSeparator"):
+      return "missing_separator"
+    case kind.startsWith("MissingDescription"):
+      return "missing_description"
+    case kind.startsWith("EmptyType"):
+      return "empty_type"
+    case kind.startsWith("EmptyScope"):
+      return "empty_scope"
+    case kind.startsWith("MissingColon"):
+      return "missing_colon"
+    case kind.startsWith("MissingSpace"):
+      return "missing_space"
+    case kind.startsWith("ExtraSpaceBeforeColon"):
+      return "extra_space_before_colon"
+    case kind.startsWith("ExtraSpaceAfterColon"):
+      return "extra_space_after_colon"
+    case kind.startsWith("TrailingSpaces"):
+      return "trailing_spaces"
+    case kind.startsWith("UnexpectedChar"):
+      return "unexpected_char"
+    default:
+      return "parse_error"
   }
-  if (kind.startsWith("ExtraSpaceAfterColon")) return "extra_space_after_colon"
-  if (kind.startsWith("TrailingSpaces")) return "trailing_spaces"
-  if (kind.startsWith("UnexpectedChar")) return "unexpected_char"
-  return "parse_error"
 }
 
 const parseQuotedValues = (fragment: string): readonly string[] => {
@@ -297,108 +314,105 @@ type IssueDetails = {
 }
 
 const issueDetailsFromKind = (kind: string, code: string): IssueDetails => {
-  if (code === "invalid_type") {
-    const found = parseFoundValue(kind)
-    const expected = parseExpectedValues(kind, "expected")
-    if (found !== undefined && expected.length > 0) {
-      return {
-        message: `Invalid commit type \"${found}\". Expected one of: ${
-          expected.join(", ")
-        }.`,
-        expected,
-        received: found,
+  switch (code) {
+    case "invalid_type": {
+      const found = parseFoundValue(kind)
+      const expected = parseExpectedValues(kind, "expected")
+      if (found !== undefined && expected.length > 0) {
+        return {
+          message: `Invalid commit type \"${found}\". Expected one of: ${
+            expected.join(", ")
+          }.`,
+          expected,
+          received: found,
+        }
       }
+      return { message: "Invalid commit type." }
     }
-    return { message: "Invalid commit type." }
-  }
-
-  if (code === "invalid_scope") {
-    const found = parseFoundValue(kind)
-    const expected = parseExpectedValues(kind, "expected")
-    if (found !== undefined && expected.length > 0) {
-      return {
-        message: `Invalid scope \"${found}\". Expected one of: ${
-          expected.join(", ")
-        }.`,
-        expected,
-        received: found,
+    case "invalid_scope": {
+      const found = parseFoundValue(kind)
+      const expected = parseExpectedValues(kind, "expected")
+      if (found !== undefined && expected.length > 0) {
+        return {
+          message: `Invalid scope \"${found}\". Expected one of: ${
+            expected.join(", ")
+          }.`,
+          expected,
+          received: found,
+        }
       }
+      return { message: "Invalid scope." }
     }
-    return { message: "Invalid scope." }
-  }
-
-  if (code === "type_used_as_scope") {
-    const found = parseFoundValue(kind)
-    const expectedScopes = parseExpectedValues(kind, "expected_scopes")
-    if (found !== undefined && expectedScopes.length > 0) {
-      return {
-        message: `Scope \"${found}\" is a commit type. Expected scopes: ${
-          expectedScopes.join(", ")
-        }.`,
-        expected: expectedScopes,
-        received: found,
+    case "type_used_as_scope": {
+      const found = parseFoundValue(kind)
+      const expectedScopes = parseExpectedValues(kind, "expected_scopes")
+      if (found !== undefined && expectedScopes.length > 0) {
+        return {
+          message: `Scope \"${found}\" is a commit type. Expected scopes: ${
+            expectedScopes.join(", ")
+          }.`,
+          expected: expectedScopes,
+          received: found,
+        }
       }
+      return { message: "Scope value is a commit type." }
     }
-    return { message: "Scope value is a commit type." }
+    case "missing_closing_paren":
+      return { message: "Missing closing ')' in scope." }
+    case "missing_separator":
+      return {
+        message: "Missing ': ' separator between header and description.",
+      }
+    case "missing_description":
+      return { message: "Missing commit description after ': '." }
+    case "empty_type":
+      return { message: "Missing commit type before scope or separator." }
+    case "empty_scope":
+      return { message: "Scope cannot be empty." }
+    case "missing_colon":
+      return { message: "Missing ':' separator." }
+    case "missing_space":
+      return { message: "Missing required space after ':'." }
+    case "extra_space_before_colon":
+      return { message: "Extra space before ':' is not allowed." }
+    case "extra_space_after_colon":
+      return { message: "Extra spaces after ':' are not allowed." }
+    case "trailing_spaces":
+      return { message: "Trailing spaces are not allowed in the header." }
+    case "unexpected_char":
+      return { message: "Unexpected character in commit header." }
+    default:
+      return { message: kind }
   }
-
-  if (code === "missing_closing_paren") {
-    return { message: "Missing closing ')' in scope." }
-  }
-  if (code === "missing_separator") {
-    return { message: "Missing ': ' separator between header and description." }
-  }
-  if (code === "missing_description") {
-    return { message: "Missing commit description after ': '." }
-  }
-  if (code === "empty_type") {
-    return { message: "Missing commit type before scope or separator." }
-  }
-  if (code === "empty_scope") return { message: "Scope cannot be empty." }
-  if (code === "missing_colon") return { message: "Missing ':' separator." }
-  if (code === "missing_space") {
-    return { message: "Missing required space after ':'." }
-  }
-  if (code === "extra_space_before_colon") {
-    return { message: "Extra space before ':' is not allowed." }
-  }
-  if (code === "extra_space_after_colon") {
-    return { message: "Extra spaces after ':' are not allowed." }
-  }
-  if (code === "trailing_spaces") {
-    return { message: "Trailing spaces are not allowed in the header." }
-  }
-  if (code === "unexpected_char") {
-    return { message: "Unexpected character in commit header." }
-  }
-  return { message: kind }
 }
 
 const pathForCode = (
   code: string,
 ): ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment> => {
-  if (code === "invalid_input_type") return [segment("input")]
-  if (code === "config_invalid") return [segment("config")]
-  if (code === "invalid_type" || code === "empty_type") return [segment("type")]
-  if (
-    code === "invalid_scope" || code === "type_used_as_scope" ||
-    code === "empty_scope"
-  ) {
-    return [segment("scope")]
+  switch (code) {
+    case "invalid_input_type":
+      return [segment("input")]
+    case "config_invalid":
+      return [segment("config")]
+    case "invalid_type":
+    case "empty_type":
+      return [segment("type")]
+    case "invalid_scope":
+    case "type_used_as_scope":
+    case "empty_scope":
+      return [segment("scope")]
+    case "missing_description":
+    case "trailing_spaces":
+      return [segment("description")]
+    case "missing_separator":
+    case "missing_colon":
+    case "missing_space":
+    case "extra_space_before_colon":
+    case "extra_space_after_colon":
+      return [segment("separator")]
+    default:
+      return [segment("header")]
   }
-  if (code === "missing_description" || code === "trailing_spaces") {
-    return [segment("description")]
-  }
-  if (
-    code === "missing_separator" ||
-    code === "missing_colon" ||
-    code === "missing_space" ||
-    code === "extra_space_before_colon" ||
-    code === "extra_space_after_colon"
-  ) {
-    return [segment("separator")]
-  }
-  return [segment("header")]
 }
 
 const pathToString = (
@@ -629,21 +643,11 @@ const toConventionalCommit = (
   }
 }
 
-const schemaConfigStore = new WeakMap<object, ConventionalConfig | undefined>()
-
-const getSchemaConfig = (
-  schema: ConfiguredSchema,
-): ConventionalConfig | undefined => {
-  if (!schemaConfigStore.has(schema as object)) {
-    throw new TypeError("schema must be created by config()")
-  }
-  return schemaConfigStore.get(schema as object)
-}
-
 const createSchema = (
   baseConfig: ConventionalConfig | undefined,
 ): ConfiguredSchema => {
   const schema: ConfiguredSchema = {
+    config: baseConfig,
     "~standard": {
       version: 1,
       vendor: "conventional-prs",
@@ -683,7 +687,6 @@ const createSchema = (
       },
     },
   }
-  schemaConfigStore.set(schema as object, baseConfig)
   return schema
 }
 
@@ -703,7 +706,7 @@ export function safeParse(
   schema: ConfiguredSchema,
   input: unknown,
 ): SafeParseResult {
-  const cfg = getSchemaConfig(schema)
+  const cfg = schema.config
   if (typeof input !== "string") {
     return {
       success: false,

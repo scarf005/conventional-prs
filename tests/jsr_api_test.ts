@@ -28,6 +28,13 @@ Deno.test("config() returns strict standard-schema success object", () => {
   })
 })
 
+Deno.test("config() stores config on the returned schema", () => {
+  const options = { types: ["feat", "fix"], scopes: ["api"] } as const
+  const schema = pr.config(options)
+
+  assertEquals(schema.config, options)
+})
+
 Deno.test("config() returns strict standard-schema failure issues", () => {
   const schema = pr.config({ types: ["feat", "fix"], scopes: ["api"] })
   const result = schema["~standard"].validate("fature(api): add endpoint")
