@@ -1,5 +1,5 @@
-import { assertEquals } from "jsr:@std/assert/equals"
-import { assertSnapshot } from "jsr:@std/testing/snapshot"
+import { assertEquals } from "@std/assert/equals"
+import { assertSnapshot } from "@std/testing/snapshot"
 
 import * as pr from "../mod.ts"
 

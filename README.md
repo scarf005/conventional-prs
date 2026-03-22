@@ -57,7 +57,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-Uses a JavaScript action backed by the bundled WASM validator.
+Uses a bundled JavaScript action backed by a bundled WASM validator.
 
 ## Benchmarks
 

@@ -58,6 +58,9 @@ jobs:
       - name: Check WASM bindings
         run: deno task wasmbuild:check
 
+      - name: Check bundled action artifacts
+        run: deno task build:action:check
+
       - name: Test JavaScript action helpers
         run: node --test action/index.test.mjs
 

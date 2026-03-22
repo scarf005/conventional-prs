@@ -1,5 +1,5 @@
 import { appendFile, readFile } from "node:fs/promises"
-import { dirname, extname, resolve } from "node:path"
+import { extname } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import {
@@ -9,7 +9,8 @@ import {
   pretty_print_header_with_config_auto,
   validate_header,
   validate_header_with_config_auto,
-} from "../lib/rs_lib.internal.js"
+} from "../../lib/rs_lib.internal.js"
+import process from "node:process"
 
 const COMMENT_MARKER = "<!-- conventional-prs-validation -->"
 const CONFIG_PATHS = [
@@ -21,8 +22,6 @@ const CONFIG_PATHS = [
 ]
 
 let wasmReady
-
-const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 
 const getInput = (name) => {
   const key = `INPUT_${
@@ -48,13 +47,20 @@ export const parseBooleanInput = (value, defaultValue = false) => {
 }
 
 export const inferConfigFormat = (path) => {
-  const extension = extname(path).toLowerCase()
-  if (extension === ".yml") return "yml"
-  if (extension === ".yaml") return "yaml"
-  if (extension === ".json") return "json"
-  if (extension === ".jsonc") return "jsonc"
-  if (extension === ".toml") return "toml"
-  return undefined
+  switch (extname(path).toLowerCase()) {
+    case ".yml":
+      return "yml"
+    case ".yaml":
+      return "yaml"
+    case ".json":
+      return "json"
+    case ".jsonc":
+      return "jsonc"
+    case ".toml":
+      return "toml"
+    default:
+      return undefined
+  }
 }
 
 export const readPullRequest = (eventPayload) => {
@@ -99,6 +105,12 @@ const appendMultilineOutput = async (name, value) => {
   )
 }
 
+const writeOutputs = async ({ valid, configPath, report }) => {
+  await appendMultilineOutput("valid", valid ? "true" : "false")
+  await appendMultilineOutput("config-path", configPath)
+  await appendMultilineOutput("report", report)
+}
+
 const appendSummary = async (content) => {
   const summaryFile = process.env.GITHUB_STEP_SUMMARY
   if (!summaryFile) {
@@ -108,19 +120,17 @@ const appendSummary = async (content) => {
   await appendFile(summaryFile, `${content}\n`)
 }
 
-const githubRequest = async (url, options = {}) => {
+const githubRequest = (url, options = {}) => {
   const headers = new Headers(options.headers ?? {})
   if (options.token) {
     headers.set("Authorization", `Bearer ${options.token}`)
   }
 
-  const response = await fetch(url, {
+  return fetch(url, {
     method: options.method ?? "GET",
     headers,
     body: options.body,
   })
-
-  return response
 }
 
 const listValidationComments = async (
@@ -274,9 +284,31 @@ const loadRepoConfig = async ({ repository, token }) => {
   return null
 }
 
+const wasmUrls = [
+  new URL("./rs_lib.wasm", import.meta.url),
+  new URL("../../lib/rs_lib.wasm", import.meta.url),
+]
+
+const loadWasmBytes = async () => {
+  for (const url of wasmUrls) {
+    try {
+      return await readFile(url)
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error) {
+        const code = error.code
+        if (code === "ENOENT" || code === "ENOTDIR") {
+          continue
+        }
+      }
+      throw error
+    }
+  }
+
+  throw new Error("Unable to locate bundled rs_lib.wasm")
+}
+
 const initWasm = async () => {
-  const wasmPath = resolve(repoRoot, "lib/rs_lib.wasm")
-  const bytes = await readFile(wasmPath)
+  const bytes = await loadWasmBytes()
   const { instance } = await WebAssembly.instantiate(bytes, {
     "./rs_lib.internal.js": {
       __wbindgen_init_externref_table,
@@ -342,9 +374,7 @@ export const run = async () => {
     console.log(
       "This action only runs on pull_request or pull_request_target events",
     )
-    await appendMultilineOutput("valid", "true")
-    await appendMultilineOutput("config-path", "")
-    await appendMultilineOutput("report", "")
+    await writeOutputs({ valid: true, configPath: "", report: "" })
     return
   }
 
@@ -355,9 +385,7 @@ export const run = async () => {
     )
   ) {
     console.log("PR title validation is disabled")
-    await appendMultilineOutput("valid", "true")
-    await appendMultilineOutput("config-path", "")
-    await appendMultilineOutput("report", "")
+    await writeOutputs({ valid: true, configPath: "", report: "" })
     return
   }
 
@@ -389,9 +417,11 @@ export const run = async () => {
     configFile,
   })
 
-  await appendMultilineOutput("valid", validation.valid ? "true" : "false")
-  await appendMultilineOutput("config-path", configFile?.path ?? "")
-  await appendMultilineOutput("report", validation.report)
+  await writeOutputs({
+    valid: validation.valid,
+    configPath: configFile?.path ?? "",
+    report: validation.report,
+  })
 
   if (validation.valid) {
     console.log("PR title is valid")
@@ -421,9 +451,7 @@ if (isMainModule) {
   run().catch(async (error) => {
     const message = error instanceof Error ? error.message : String(error)
     console.error(message)
-    await appendMultilineOutput("valid", "false")
-    await appendMultilineOutput("config-path", "")
-    await appendMultilineOutput("report", message)
+    await writeOutputs({ valid: false, configPath: "", report: message })
     process.exitCode = 1
   })
 }

@@ -17,4 +17,4 @@ outputs:
     description: Validation report for invalid titles or config errors.
 runs:
   using: node20
-  main: action/index.mjs
+  main: action/dist/index.js
