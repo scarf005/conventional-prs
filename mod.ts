@@ -16,7 +16,24 @@
  * assertEquals(invalid.success, false)
  *
  * if (!invalid.success) {
- *   console.error(pr.summarize(invalid.issues))
+ *   const report = pr.summarize(invalid.issues)
+ *   assertEquals(report, [
+ *     "Error: Invalid commit message format",
+ *     "   ,-[ input:1:1 ]",
+ *     "   |",
+ *     " 1 | fature(web): add schema validation",
+ *     "   | ^^^|^^  ^|^  ",
+ *     "   |    `--------- 'fature' is not a valid type (#1)",
+ *     "   |          |   ",
+ *     "   |          `--- 'web' is not a valid scope (#2)",
+ *     "   | ",
+ *     "   | Help 1: Valid types: feat, fix",
+ *     "   | ",
+ *     "   | Help 2: Valid scopes: api",
+ *     "---'",
+ *     "",
+ *   ].join("\n"))
+ *   console.error(report)
  * }
  * ```
  *
