@@ -1,8 +1,43 @@
 minimum_prek_version = "0.3.0"
-default_install_hook_types = ["commit-msg"]
+default_install_hook_types = ["pre-commit", "commit-msg"]
 
 [[repos]]
 repo = "local"
-hooks = [
-  { id = "conventional-commit-title", name = "conventional commit title", language = "script", entry = "scripts/validate-commit-title.sh", stages = ["commit-msg"], always_run = true },
-]
+
+[[repos.hooks]]
+id = "deno-lint-fix"
+name = "deno lint --fix"
+language = "system"
+entry = "deno lint --fix"
+stages = ["pre-commit"]
+always_run = true
+pass_filenames = false
+priority = 0
+
+[[repos.hooks]]
+id = "deno-check"
+name = "deno check"
+language = "system"
+entry = "deno check"
+stages = ["pre-commit"]
+always_run = true
+pass_filenames = false
+priority = 1
+
+[[repos.hooks]]
+id = "deno-task-test"
+name = "deno task test"
+language = "system"
+entry = "deno task test"
+stages = ["pre-commit"]
+always_run = true
+pass_filenames = false
+priority = 2
+
+[[repos.hooks]]
+id = "conventional-commit-title"
+name = "conventional commit title"
+language = "script"
+entry = "scripts/validate-commit-title.sh"
+stages = ["commit-msg"]
+always_run = true
