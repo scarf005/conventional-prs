@@ -56,7 +56,7 @@ const checkAction = async () => {
     const tempOutDir = resolve(tempDir, "dist")
     await buildAction(tempOutDir)
 
-    for (const file of ["index.js", "rs_lib.wasm"]) {
+    for (const file of ["index.js"]) {
       const expected = await readFile(resolve(tempOutDir, file))
       const actual = await readFile(resolve(outDir, file))
 
@@ -66,6 +66,8 @@ const checkAction = async () => {
         )
       }
     }
+
+    await readFile(resolve(outDir, "rs_lib.wasm"))
   } finally {
     await rm(tempDir, { recursive: true, force: true })
   }

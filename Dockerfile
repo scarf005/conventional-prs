@@ -6,16 +6,12 @@ RUN apt-get update && \
     apt-get install -y pkg-config libssl-dev clang mold && \
     rm -rf /var/lib/apt/lists/*
 
+COPY .cargo/ ./.cargo/
 COPY Cargo.toml Cargo.lock ./
-
-RUN mkdir -p src && \
-    echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
-    rm -rf src
-
 COPY src/ ./src/
-RUN touch src/main.rs && \
-    cargo build --release --locked
+COPY rs_lib/ ./rs_lib/
+
+RUN cargo build --release --locked
 
 FROM debian:bookworm-slim
 
