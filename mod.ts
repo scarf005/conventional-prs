@@ -1,3 +1,28 @@
+/**
+ * ```ts
+ * import { assertEquals } from "jsr:@std/assert/equals"
+ * import * as pr from "./mod.ts"
+ *
+ * const semanticYml = [
+ *   'types: ["feat", "fix"]',
+ *   'scopes: ["api"]',
+ * ].join("\n")
+ *
+ * const schema = pr.parseConfig(semanticYml)
+ * const ok = pr.safeParse(schema, "feat(api): add schema validation")
+ * assertEquals(ok.success, true)
+ *
+ * const invalid = pr.safeParse(schema, "fature(web): add schema validation")
+ * assertEquals(invalid.success, false)
+ *
+ * if (!invalid.success) {
+ *   console.error(pr.summarize(invalid.issues))
+ * }
+ * ```
+ *
+ * @module
+ */
+
 import * as wasm from "./lib/rs_lib.wasm"
 import { parse as parseYaml } from "jsr:@std/yaml@^1.0.12"
 import {

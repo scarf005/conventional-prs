@@ -77,9 +77,7 @@ BENCH_INPUT='feat(api): add recovery' BENCH_CONFIG_PATH='.github/semantic.yml' B
 
 ## TypeScript bindings (JSR)
 
-TypeScript and JSR usage is documented in `README.typescript.md`.
-
-When publishing to JSR, the TypeScript README is shipped as the package README.
+Check [mod.ts](./mod.ts) or `https://jsr.io/@scarf/conventional-prs` for details.
 
 ## Local Git Hooks (prek)
 

@@ -22,7 +22,6 @@
     "include": [
       "LICENSE",
       "README.md",
-      "README.typescript.md",
       "deno.json",
       "mod.ts",
       "lib/rs_lib.d.ts",
