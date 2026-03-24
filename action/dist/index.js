@@ -218,9 +218,10 @@ var CONFIG_PATHS = [
   ".github/semantic.toml"
 ];
 var wasmReady;
-var getInput = (name) => {
-  const key = `INPUT_${name.replace(/ /gu, "_").replace(/-/gu, "_").toUpperCase()}`;
-  return process.env[key];
+var readActionInput = (name, env = process.env) => {
+  const normalized = name.replace(/ /gu, "_").toUpperCase();
+  const key = `INPUT_${normalized}`;
+  return env[key];
 };
 var parseBooleanInput = (value, defaultValue = false) => {
   if (value === void 0 || value === null || value.trim().length === 0) {
@@ -510,7 +511,7 @@ var run = async () => {
     return;
   }
   if (!parseBooleanInput(
-    getInput("validate-pr-title") ?? process.env.INPUT_VALIDATE_PR_TITLE,
+    readActionInput("validate-pr-title") ?? process.env.INPUT_VALIDATE_PR_TITLE,
     true
   )) {
     console.log("PR title validation is disabled");
@@ -525,7 +526,7 @@ var run = async () => {
   if (!repository) {
     throw new Error("GITHUB_REPOSITORY is required");
   }
-  const token = getInput("github-token") ?? process.env.GITHUB_TOKEN ?? "";
+  const token = readActionInput("github-token") ?? process.env.GITHUB_TOKEN ?? "";
   const eventPayload = JSON.parse(await readFile(eventPath, "utf8"));
   const pullRequest = readPullRequest(eventPayload);
   const configFile = await loadRepoConfig({ repository, token });
@@ -577,6 +578,7 @@ export {
   buildFailureComment,
   inferConfigFormat,
   parseBooleanInput,
+  readActionInput,
   readPullRequest,
   run
 };

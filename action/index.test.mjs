@@ -5,6 +5,7 @@ import {
   buildFailureComment,
   inferConfigFormat,
   parseBooleanInput,
+  readActionInput,
   readPullRequest,
 } from "./src/index.js";
 
@@ -43,4 +44,11 @@ test("buildFailureComment includes marker and report", () => {
 
   assert.match(comment, /conventional-prs-validation/);
   assert.match(comment, /Error: invalid title/);
+});
+
+test("readActionInput handles hyphenated GitHub input names", () => {
+  assert.equal(
+    readActionInput("github-token", { "INPUT_GITHUB-TOKEN": "bot-token" }),
+    "bot-token",
+  );
 });

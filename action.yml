@@ -4,6 +4,7 @@ inputs:
   github-token:
     description: GitHub token used to read config files and manage PR comments.
     required: false
+    default: ${{ github.token }}
   validate-pr-title:
     description: Validate the current pull request title.
     required: false
